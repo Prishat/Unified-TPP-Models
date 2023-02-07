@@ -4,20 +4,20 @@ from torch.optim import Adam
 import numpy as np
 
 class rmtppNet(nn.Module):
-    def __init__(self, config, lossweight):
+    def __init__(self, params, lossweight):
         super(rmtppNet, self).__init__()
-        self.config = config
-        self.n_class = config['event_class']
-        self.embedding = nn.Embedding(num_embeddings=config['event_class'], embedding_dim=config['emb_dim'])
-        self.emb_drop = nn.Dropout(p=config['dropout'])
-        self.lstm = nn.LSTM(input_size=config['emb_dim'] + 1,
-                            hidden_size=config['hid_dim'],
+        self.params = params
+        self.n_class = params['event_class']
+        self.embedding = nn.Embedding(num_embeddings=params['event_class'], embedding_dim=params['emb_dim'])
+        self.emb_drop = nn.Dropout(p=params['dropout'])
+        self.lstm = nn.LSTM(input_size=params['emb_dim'] + 1,
+                            hidden_size=params['hid_dim'],
                             batch_first=True,
                             bidirectional=False)
-        self.mlp = nn.Linear(in_features=config['hid_dim'], out_features=config['mlp_dim'])
-        self.mlp_drop = nn.Dropout(p=config['dropout'])
-        self.event_linear = nn.Linear(in_features=config['mlp_dim'], out_features=config['event_class'])
-        self.time_linear = nn.Linear(in_features=config['mlp_dim'], out_features=1)
+        self.mlp = nn.Linear(in_features=params['hid_dim'], out_features=params['mlp_dim'])
+        self.mlp_drop = nn.Dropout(p=params['dropout'])
+        self.event_linear = nn.Linear(in_features=params['mlp_dim'], out_features=params['event_class'])
+        self.time_linear = nn.Linear(in_features=params['mlp_dim'], out_features=1)
         self.set_criterion(lossweight)
 
     def set_optimizer(self, total_step, use_bert=True):
@@ -28,11 +28,11 @@ class rmtppNet(nn.Module):
                                       t_total=total_step)
         else:
             self.optimizer = Adam(self.parameters(), lr=self.config.lr)"""
-        self.optimizer = Adam(self.parameters(), lr=self.config['lr'])
+        self.optimizer = Adam(self.parameters(), lr=self.params['lr'])
 
     def set_criterion(self, weight):
         self.event_criterion = nn.CrossEntropyLoss(weight=torch.FloatTensor(weight))
-        if self.config['model'] == 'rmtpp':
+        if self.params['model'] == 'rmtpp':
             self.intensity_w = nn.Parameter(torch.tensor(0.1, dtype=torch.float, device='cuda'))
             self.intensity_b = nn.Parameter(torch.tensor(0.1, dtype=torch.float, device='cuda'))
             self.time_criterion = self.RMTPPLoss
@@ -71,7 +71,7 @@ class rmtppNet(nn.Module):
         time_logits, event_logits = self.forward(time_input, event_input)
         loss1 = self.time_criterion(time_logits.view(-1), time_target.view(-1))
         loss2 = self.event_criterion(event_logits.view(-1, self.n_class), event_target.view(-1))
-        loss = self.config.alpha * loss1 + loss2
+        loss = self.params['alpha'] * loss1 + loss2
         loss.backward()
 
         self.optimizer.step()

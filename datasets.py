@@ -6,14 +6,14 @@ from collections import Counter
 import math
 
 class ATMDataset:
-    def __init__(self, config, subset):
+    def __init__(self, params, subset):
         data = pandas.read_csv(f"data/{subset}_day.csv")
         self.subset = subset
         self.id = list(data['id'])
         self.time = list(data['time'])
         self.event = list(data['event'])
-        self.config = config
-        self.seq_len = config.seq_len
+        self.params = params
+        self.seq_len = params['seq_len']
         self.time_seqs, self.event_seqs = self.generate_sequence()
         self.statistic()
 
