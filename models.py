@@ -10,28 +10,18 @@ from .datasets import *
 from .misc import *
 
 
-class rmtpp():
-    def __init__(self, params, data):
+class rmtpp:
+    def __init__(self, params):
         # super(rmtpp, self).__init__(params, params['lossweight'])
         self.params = params
-        self.data = data
+        #self.data = data
 
         weight = np.ones(self.params['event_class'])
 
         self.model = rmtppNet(self.params, lossweight=weight)
 
-    def preprocess(self, data):
-        train_set = ATMDataset(self.params, subset='train')
-        test_set = ATMDataset(self.params, subset='test')
-        train_loader = DataLoader(train_set, batch_size=self.params['batch_size'], shuffle=True,
-                                  collate_fn=ATMDataset.to_features)
-        test_loader = DataLoader(test_set, batch_size=self.params['batch_size'], shuffle=False,
-                                 collate_fn=ATMDataset.to_features)
-
-        return train_loader, test_loader
-
-    def train(self):
-        train_loader, test_loader = self.preprocess(self.data)
+    def train(self, train_loader, val_loader):
+        #train_loader, test_loader = self.preprocess(self.data)
 
         self.model.set_optimizer(total_step=len(train_loader) * self.params['epochs'], use_bert=False)
         self.model.cuda()
@@ -51,7 +41,9 @@ class rmtpp():
                     print("total loss:", range_loss / self.params['verbose_step'])
                     range_loss1 = range_loss2 = range_loss = 0
 
-    def evaluate(self, test_loader):
+            self.evaluate(val_loader, epc, test=False)
+
+    def evaluate(self, test_loader, epoch, test=False):
         self.model.eval()
 
         pred_times, pred_events = [], []
@@ -63,13 +55,17 @@ class rmtpp():
             pred_time, pred_event = self.model.predict(batch)
             pred_times.append(pred_time)
             pred_events.append(pred_event)
+
         pred_times = np.concatenate(pred_times).reshape(-1)
         gold_times = np.concatenate(gold_times).reshape(-1)
         pred_events = np.concatenate(pred_events).reshape(-1)
         gold_events = np.concatenate(gold_events).reshape(-1)
         time_error = abs_error(pred_times, gold_times)
         acc, recall, f1 = clf_metric(pred_events, gold_events, n_class=self.params['event_class'])
-        print(f"epoch {epc}")
+
+        if not test:
+            print(f"epoch {epoch}")
+
         print(f"time_error: {time_error}, PRECISION: {acc}, RECALL: {recall}, F1: {f1}")
 
     def predict(self, data):
