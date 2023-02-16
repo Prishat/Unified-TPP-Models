@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from collections import Counter
 import math
+import random
+
 
 class ATMDataset:
     def __init__(self, params, subset):
@@ -72,3 +74,34 @@ class ATMDataset:
             print(f"event{i} = {p * 100}%")
         weight = [len(self.event) / count[k] for k in sorted(count.keys())]
         return weight
+
+
+class stackOverflow:
+    def __init__(self, params, path):
+        self.params = params
+        self.path = path
+        self.ts, self.tspan = self.load_data(1.0 / 30.0 / 24.0 / 3600.0, 1.0, 1.0)  # Put it in the config file
+
+    def load_data(self, scale=1.0, h_dt=0.0, t_dt=0.0):
+        time_seqs = []
+        with open(self.path + 'time.txt') as ftime:
+            seqs = ftime.readlines()
+            for seq in seqs:
+                time_seqs.append([float(t) for t in seq.split()])
+
+        tmin = min([min(seq) for seq in time_seqs])
+        tmax = max([max(seq) for seq in time_seqs])
+
+        mark_seqs = []
+        with open(self.path + 'event.txt') as fmark:
+            seqs = fmark.readlines()
+            for seq in seqs:
+                mark_seqs.append([int(k) for k in seq.split()])
+
+        m2mid = {m: mid for mid, m in enumerate(np.unique(sum(mark_seqs, [])))}
+
+        evnt_seqs = [[((h_dt + time - tmin) * scale, m2mid[mark]) for time, mark in zip(time_seq, mark_seq)] for
+                     time_seq, mark_seq in zip(time_seqs, mark_seqs)]
+        random.shuffle(evnt_seqs)
+
+        return evnt_seqs, (0.0, ((tmax + t_dt) - (tmin - h_dt)) * scale)

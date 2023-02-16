@@ -70,3 +70,17 @@ class rmtpp:
 
     def predict(self, data):
         return self.model.predict(data)
+
+
+class njsde:
+    def __init__(self, params):
+        pass
+
+    def train(self):
+        pass
+
+    def evaluate(self):
+        pass
+
+    def predict(self):
+        pass
