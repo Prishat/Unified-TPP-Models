@@ -81,6 +81,15 @@ class njsde:
     def __init__(self, params):
         self.params = params
 
+    @staticmethod
+    def preprocess(ts):
+        """ts: list of numpy arrays in the shape [10, 2]"""
+        l = []
+        for x in ts:
+            l.append(list(map(tuple, x.tolist())))
+
+        return l
+
     def train(self, ts, tspan):
         self.tspan = tspan
         TS = ts
@@ -137,12 +146,8 @@ class njsde:
                 # backward prop
                 self.func.backtrace.clear()
                 loss.backward()
-                print("iter: {}, current loss: {:10.4f}, running ave loss: {:10.4f}, type error: {}".format(it,
-                                                                                                            loss.item() / len(
-                                                                                                                batch),
-                                                                                                            loss_meter.avg,
-                                                                                                            mete),
-                      flush=True)
+                print("iter: {}, current loss: {:10.4f}, running ave loss: {:10.4f}, type error: {}".format(it, loss.item() / len(batch),
+                                                                                                            loss_meter.avg, mete), flush=True)
 
                 # step
                 optimizer.step()
@@ -151,15 +156,15 @@ class njsde:
 
                 # validate and visualize
                 if it % self.params['nsave'] == 0:
-                    self.evaluate(TSVA, it, dt)  # Make dt a class variable
+                    self.evaluate(TSVA, dt)  # Make dt a class variable
                     # save
                     # torch.save({'func_state_dict': func.state_dict(), 'c0': c0, 'h0': h0, 'it0': it,
                     #            'optimizer_state_dict': optimizer.state_dict()}, outpath + '/' + args.paramw)
 
         # computing testing error
-        self.predict(TSTE, it, dt)
+        self.predict(TSTE, dt)
 
-    def evaluate(self, TSVA, it=0, dt=1.0 / 30.0):
+    def evaluate(self, TSVA, dt=1.0 / 30.0):
         for si in range(0, len(TSVA), self.params['batch_size']):
             # use the full validation set for forward pass
             tsave, trace, lmbda, gtid, tsne, loss, mete = forward_pass(self.func, torch.cat((self.c0, self.h0), dim=-1),
@@ -170,21 +175,15 @@ class njsde:
             # backward prop
             self.func.backtrace.clear()
             loss.backward()
-            print("iter: {:5d}, validation loss: {:10.4f}, num_evnts: {:8d}, type error: {}".format(it,
-                                                                                                    loss.item() / len(
-                                                                                                        TSVA[si:si +
-                                                                                                                self.params[
-                                                                                                                    'batch_size']]),
-                                                                                                    len(tsne),
-                                                                                                    mete),
-                  flush=True)
+            print("validation loss: {:10.4f}, num_evnts: {:8d}, type error: {}".format(loss.item() / len(TSVA[si:si + self.params['batch_size']]),
+                                                                                                    len(tsne), mete), flush=True)
 
             # visualize
             tsave_ = torch.tensor([record[0] for record in reversed(self.func.backtrace)])
             trace_ = torch.stack(tuple(record[1] for record in reversed(self.func.backtrace)))
             # visualize(outpath, tsave, trace, lmbda, tsave_, trace_, None, None, tsne, range(si, si + args.batch_size), it)
 
-    def predict(self, TSTE, it, dt):
+    def predict(self, TSTE, dt):
         for si in range(0, len(TSTE), self.params['batch_size']):
             tsave, trace, lmbda, gtid, tsne, loss, mete = forward_pass(self.func, torch.cat((self.c0, self.h0), dim=-1),
                                                                        self.tspan, dt,
@@ -192,5 +191,5 @@ class njsde:
                                                                        self.params['evnt_align'])
             # visualize(outpath, tsave, trace, lmbda, None, None, None, None, tsne, range(si, si + args.batch_size), it,
             #          appendix="testing")
-            print("iter: {:5d}, testing loss: {:10.4f}, num_evnts: {:8d}, type error: {}".format(it, loss.item() / len(
-                TSTE[si:si + self.params['batch_size']]), len(tsne), mete), flush=True)
+            print("testing loss: {:10.4f}, num_evnts: {:8d}, type error: {}".format(loss.item() / len(TSTE[si:si + self.params['batch_size']]),
+                                                                                    len(tsne), mete), flush=True)

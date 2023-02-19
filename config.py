@@ -13,6 +13,16 @@ rmtpp_params = {"model":"rmtpp",
                 "lr":1e-3,
                 "epochs":30}
 
-# Datset Parameter Dictionaries
+njsde_params = {'niters':100,
+                'jump_type':'read',
+                'batch_size':1,
+                'nsave':10,
+                'fold':0,
+                'restart':False,
+                'evnt_align':False,
+                'seed0':False,
+                'debug':False}
+
+# Dataset Parameter Dictionaries
 
 atm_params = {'seq_len': 10}
