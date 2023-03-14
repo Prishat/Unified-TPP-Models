@@ -105,3 +105,28 @@ class stackOverflow:
         random.shuffle(evnt_seqs)
 
         return evnt_seqs, (0.0, ((tmax + t_dt) - (tmin - h_dt)) * scale)
+
+class thpDataloader:
+    def __init__(self, params):
+        self.params = params
+
+    def load_data(self):
+        """ Load data and prepare dataloader. """
+
+        def load_data(name, dict_name):
+            with open(name, 'rb') as f:
+                data = pickle.load(f, encoding='latin-1')
+                num_types = data['dim_process']
+                data = data[dict_name]
+                return data, int(num_types)
+
+        print('[Info] Loading train data...')
+        train_data, num_types = load_data(opt['data'] + 'train.pkl', 'train')
+        print('[Info] Loading dev data...')
+        dev_data, _ = load_data(opt['data'] + 'dev.pkl', 'dev')
+        print('[Info] Loading test data...')
+        test_data, _ = load_data(opt['data'] + 'test.pkl', 'test')
+
+        trainloader = get_dataloader(train_data, opt['batch_size'], shuffle=True)
+        testloader = get_dataloader(test_data, opt['batch_size'], shuffle=False)
+        return trainloader, testloader, num_types

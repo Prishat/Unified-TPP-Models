@@ -5,10 +5,13 @@ from torch.utils.data import DataLoader
 
 import numpy as np
 
-from .utils import rmtppNet
+from .utils import *
 from .datasets import *
 from .misc import *
 
+import time
+from .transformer import Constants
+from .transformer.Models import Transformer
 
 class rmtpp:
     def __init__(self, params):
@@ -193,3 +196,170 @@ class njsde:
             #          appendix="testing")
             print("testing loss: {:10.4f}, num_evnts: {:8d}, type error: {}".format(loss.item() / len(TSTE[si:si + self.params['batch_size']]),
                                                                                     len(tsne), mete), flush=True)
+
+
+class transHP:
+    def __init__(self, params):
+        self.params = params
+
+        self.model = Transformer(
+            num_types=self.params['num_types'],
+            d_model=self.params['d_model'],
+            d_rnn=self.params['d_rnn'],
+            d_inner=self.params['d_inner_hid'],
+            n_layers=self.params['n_layers'],
+            n_head=self.params['n_head'],
+            d_k=self.params['d_k'],
+            d_v=self.params['d_v'],
+            dropout=self.params['dropout'],
+        )
+        self.model.to(self.params['device'])
+
+    def train_epoch(self, training_data, optimizer, pred_loss_func):
+        self.model.train()
+
+        total_event_ll = 0  # cumulative event log-likelihood
+        total_time_se = 0  # cumulative time prediction squared-error
+        total_event_rate = 0  # cumulative number of correct prediction
+        total_num_event = 0  # number of total events
+        total_num_pred = 0  # number of predictions
+
+        for batch in tqdm(training_data, mininterval=2,
+                          desc='  - (Training)   ', leave=False):
+            """ prepare data """
+            event_time, time_gap, event_type = map(lambda x: x.to(self.params['device']), batch)
+
+            """ forward """
+            optimizer.zero_grad()
+
+            enc_out, prediction = self.model(event_type, event_time)
+
+            """ backward """
+            # negative log-likelihood
+            event_ll, non_event_ll = log_likelihood(self.model, enc_out, event_time, event_type)
+            event_loss = -torch.sum(event_ll - non_event_ll)
+
+            # type prediction
+            pred_loss, pred_num_event = type_loss(prediction[0], event_type, pred_loss_func)
+
+            # time prediction
+            se = time_loss(prediction[1], event_time)
+
+            # SE is usually large, scale it to stabilize training
+            scale_time_loss = 100
+            loss = event_loss + pred_loss + se / scale_time_loss
+            loss.backward()
+
+            """ update parameters """
+            optimizer.step()
+
+            """ note keeping """
+            total_event_ll += -event_loss.item()
+            total_time_se += se.item()
+            total_event_rate += pred_num_event.item()
+            total_num_event += event_type.ne(Constants.PAD).sum().item()
+            # we do not predict the first event
+            total_num_pred += event_type.ne(Constants.PAD).sum().item() - event_time.shape[0]
+
+        rmse = np.sqrt(total_time_se / total_num_pred)
+        return total_event_ll / total_num_event, total_event_rate / total_num_pred, rmse
+
+    def eval_epoch(self, validation_data, pred_loss_func):
+        self.model.eval()
+
+        total_event_ll = 0  # cumulative event log-likelihood
+        total_time_se = 0  # cumulative time prediction squared-error
+        total_event_rate = 0  # cumulative number of correct prediction
+        total_num_event = 0  # number of total events
+        total_num_pred = 0  # number of predictions
+        with torch.no_grad():
+            for batch in tqdm(validation_data, mininterval=2,
+                              desc='  - (Validation) ', leave=False):
+                """ prepare data """
+                event_time, time_gap, event_type = map(lambda x: x.to(self.params['device']), batch)
+
+                """ forward """
+                enc_out, prediction = self.model(event_type, event_time)
+
+                """ compute loss """
+                event_ll, non_event_ll = log_likelihood(self.model, enc_out, event_time, event_type)
+                event_loss = -torch.sum(event_ll - non_event_ll)
+                _, pred_num = type_loss(prediction[0], event_type, pred_loss_func)
+                se = time_loss(prediction[1], event_time)
+
+                """ note keeping """
+                total_event_ll += -event_loss.item()
+                total_time_se += se.item()
+                total_event_rate += pred_num.item()
+                total_num_event += event_type.ne(Constants.PAD).sum().item()
+                total_num_pred += event_type.ne(Constants.PAD).sum().item() - event_time.shape[0]
+
+        rmse = np.sqrt(total_time_se / total_num_pred)
+        return total_event_ll / total_num_event, total_event_rate / total_num_pred, rmse
+
+    def _train(self, training_data, validation_data, optimizer, scheduler, pred_loss_func):
+        valid_event_losses = []  # validation log-likelihood
+        valid_pred_losses = []  # validation event type prediction accuracy
+        valid_rmse = []  # validation event time prediction RMSE
+        for epoch_i in range(self.params['epoch']):
+            epoch = epoch_i + 1
+            print('[ Epoch', epoch, ']')
+
+            start = time.time()
+            train_event, train_type, train_time = self.train_epoch(training_data, optimizer, pred_loss_func)
+            print('  - (Training)    loglikelihood: {ll: 8.5f}, '
+                  'accuracy: {type: 8.5f}, RMSE: {rmse: 8.5f}, '
+                  'elapse: {elapse:3.3f} min'
+                  .format(ll=train_event, type=train_type, rmse=train_time, elapse=(time.time() - start) / 60))
+
+            start = time.time()
+            valid_event, valid_type, valid_time = self.eval_epoch(validation_data, pred_loss_func)
+            print('  - (Testing)     loglikelihood: {ll: 8.5f}, '
+                  'accuracy: {type: 8.5f}, RMSE: {rmse: 8.5f}, '
+                  'elapse: {elapse:3.3f} min'
+                  .format(ll=valid_event, type=valid_type, rmse=valid_time, elapse=(time.time() - start) / 60))
+
+            valid_event_losses += [valid_event]
+            valid_pred_losses += [valid_type]
+            valid_rmse += [valid_time]
+            print('  - [Info] Maximum ll: {event: 8.5f}, '
+                  'Maximum accuracy: {pred: 8.5f}, Minimum RMSE: {rmse: 8.5f}'
+                  .format(event=max(valid_event_losses), pred=max(valid_pred_losses), rmse=min(valid_rmse)))
+
+            # logging
+            with open(self.params['log'], 'a') as f:
+                f.write('{epoch}, {ll: 8.5f}, {acc: 8.5f}, {rmse: 8.5f}\n'
+                        .format(epoch=epoch, ll=valid_event, acc=valid_type, rmse=valid_time))
+
+            scheduler.step()
+
+    def train(self, trainloader, testloader, num_types):
+
+        """ optimizer and scheduler """
+        optimizer = optim.Adam(filter(lambda x: x.requires_grad, self.model.parameters()),
+                               self.params['lr'], betas=(0.9, 0.999), eps=1e-05)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, 10, gamma=0.5)
+
+        """ prediction loss function, either cross entropy or label smoothing """
+        if self.params['smooth'] > 0:
+            pred_loss_func = LabelSmoothingLoss(self.params['smooth'], num_types, ignore_index=-1)
+        else:
+            pred_loss_func = nn.CrossEntropyLoss(ignore_index=-1, reduction='none')
+
+        """ number of parameters """
+        num_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        print('[Info] Number of parameters: {}'.format(num_params))
+
+        """ train the model """
+        self._train(trainloader, testloader, optimizer, scheduler, pred_loss_func)
+
+    def evaluate(self, valloader, num_types):
+        if self.params['smooth'] > 0:
+            pred_loss_func = LabelSmoothingLoss(self.params['smooth'], num_types, ignore_index=-1)
+        else:
+            pred_loss_func = nn.CrossEntropyLoss(ignore_index=-1, reduction='none')
+
+        self.eval_epoch(valloader, pred_loss_func)
+
+    def predict(self):
+        pass
