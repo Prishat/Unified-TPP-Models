@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import transformer.Constants as Constants
-from transformer.Layers import EncoderLayer
+from . import Constants
+from .Layers import EncoderLayer
 
 
 def get_non_pad_mask(seq):
@@ -49,7 +49,7 @@ class Encoder(nn.Module):
         # position vector, used for temporal encoding
         self.position_vec = torch.tensor(
             [math.pow(10000.0, 2.0 * (i // 2) / d_model) for i in range(d_model)],
-            device=torch.device('cuda'))
+            device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
 
         # event type embedding
         self.event_emb = nn.Embedding(num_types + 1, d_model, padding_idx=Constants.PAD)

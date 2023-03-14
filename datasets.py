@@ -5,6 +5,9 @@ import torch
 from collections import Counter
 import math
 import random
+import pickle
+
+from .misc import get_dataloader
 
 
 class ATMDataset:
@@ -121,12 +124,12 @@ class thpDataloader:
                 return data, int(num_types)
 
         print('[Info] Loading train data...')
-        train_data, num_types = load_data(opt['data'] + 'train.pkl', 'train')
+        train_data, num_types = load_data(self.params['data'] + 'train.pkl', 'train')
         print('[Info] Loading dev data...')
-        dev_data, _ = load_data(opt['data'] + 'dev.pkl', 'dev')
+        dev_data, _ = load_data(self.params['data'] + 'dev.pkl', 'dev')
         print('[Info] Loading test data...')
-        test_data, _ = load_data(opt['data'] + 'test.pkl', 'test')
+        test_data, _ = load_data(self.params['data'] + 'test.pkl', 'test')
 
-        trainloader = get_dataloader(train_data, opt['batch_size'], shuffle=True)
-        testloader = get_dataloader(test_data, opt['batch_size'], shuffle=False)
+        trainloader = get_dataloader(train_data, self.params['batch_size'], shuffle=True)
+        testloader = get_dataloader(test_data, self.params['batch_size'], shuffle=False)
         return trainloader, testloader, num_types

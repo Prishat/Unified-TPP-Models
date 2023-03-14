@@ -334,6 +334,9 @@ class transHP:
             scheduler.step()
 
     def train(self, trainloader, testloader, num_types):
+        # setup the log file
+        with open(self.params['log'], 'w') as f:
+            f.write('Epoch, Log-likelihood, Accuracy, RMSE\n')
 
         """ optimizer and scheduler """
         optimizer = optim.Adam(filter(lambda x: x.requires_grad, self.model.parameters()),
@@ -354,12 +357,17 @@ class transHP:
         self._train(trainloader, testloader, optimizer, scheduler, pred_loss_func)
 
     def evaluate(self, valloader, num_types):
+        start = time.time()
         if self.params['smooth'] > 0:
             pred_loss_func = LabelSmoothingLoss(self.params['smooth'], num_types, ignore_index=-1)
         else:
             pred_loss_func = nn.CrossEntropyLoss(ignore_index=-1, reduction='none')
 
-        self.eval_epoch(valloader, pred_loss_func)
+        valid_event, valid_type, valid_time = self.eval_epoch(valloader, pred_loss_func)
+        print('  - (Testing)     loglikelihood: {ll: 8.5f}, '
+              'accuracy: {type: 8.5f}, RMSE: {rmse: 8.5f}, '
+              'elapse: {elapse:3.3f} min'
+              .format(ll=valid_event, type=valid_type, rmse=valid_time, elapse=(time.time() - start) / 60))
 
     def predict(self):
         pass
