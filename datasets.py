@@ -6,6 +6,7 @@ from collections import Counter
 import math
 import random
 import pickle
+import os
 
 from .misc import get_dataloader
 
@@ -133,3 +134,20 @@ class thpDataloader:
         trainloader = get_dataloader(train_data, self.params['batch_size'], shuffle=True)
         testloader = get_dataloader(test_data, self.params['batch_size'], shuffle=False)
         return trainloader, testloader, num_types
+
+
+class nhpDatareader:
+    def __init__(self, params):
+        self.params = params
+
+    def read_data(self):
+        with open(os.path.join(self.params['PathData'], 'train.pkl'), 'rb') as f:
+            pkl_train = pickle.load(f)
+        with open(os.path.join(self.params['PathData'], 'dev.pkl'), 'rb') as f:
+            pkl_dev = pickle.load(f)
+
+        data = pkl_train['seqs']
+        data_dev = pkl_dev['seqs']
+        total_event_num = pkl_train['total_num']
+            
+        return data, data_dev, total_event_num

@@ -13,6 +13,10 @@ import time
 from .transformer import Constants
 from .transformer.Models import Transformer
 
+from .nhps.models import nhp
+from .nhps.io import processors
+from .nhps.miss import miss_mec, factorized
+
 class rmtpp:
     def __init__(self, params):
         # super(rmtpp, self).__init__(params, params['lossweight'])
@@ -368,6 +372,171 @@ class transHP:
               'accuracy: {type: 8.5f}, RMSE: {rmse: 8.5f}, '
               'elapse: {elapse:3.3f} min'
               .format(ll=valid_event, type=valid_type, rmse=valid_time, elapse=(time.time() - start) / 60))
+
+    def predict(self):
+        pass
+
+class neuralHP:
+    def __init__(self, params):
+        self.params = params
+
+    def train(self, train_data, val_data):
+        hidden_dim = self.params['DimLSTM']
+
+        agent = nhp.NeuralHawkes(
+            total_num=self.params['total_event_num'], hidden_dim=hidden_dim,
+            device='cuda' if self.params['UseGPU'] else 'cpu'
+        )
+
+        if self.params['UseGPU']:
+            agent.cuda()
+
+        sampling = self.params['Multiplier']
+
+        miss_mec = factorized.FactorizedMissMec(
+            device='cuda' if self.params['UseGPU'] else 'cpu',
+            config_file=os.path.join(self.params['PathData'], 'censor.conf')
+        )
+
+        proc = processors.DataProcessorNeuralHawkes(
+            idx_BOS=self.params['total_event_num'],
+            idx_EOS=self.params['total_event_num'] + 1,
+            idx_PAD=self.params['total_event_num'] + 2,
+            miss_mec=miss_mec,
+            sampling=sampling,
+            device='cuda' if self.params['UseGPU'] else 'cpu'
+        )
+        logger = processors.LogWriter(self.params['PathLog'], self.params)
+
+        r"""
+        we only update parameters that are only related to left2right machine
+        """
+        optimizer = optim.Adam(
+            agent.parameters(), lr=self.params['learning_rate']
+        )
+
+        print("Start training ... ")
+        total_logP_best = -1e6
+        avg_dis_best = 1e6
+        episode_best = -1
+        time0 = time.time()
+
+        episodes = []
+        total_rewards = []
+
+        max_episode = self.params['MaxEpoch'] * len(train_data)
+        report_gap = self.params['TrackPeriod']
+
+        time_sample = 0.0
+        time_train_only = 0.0
+        time_dev_only = 0.0
+        input = []
+
+        for episode in range(max_episode):
+
+            idx_seq = episode % len(train_data)
+            idx_epoch = episode // len(train_data)
+            one_seq = train_data[idx_seq]
+
+            # time_sample_0 = time.time()
+            input.append(proc.processSeq(one_seq, n=1))
+            # time_sample += (time.time() - time_sample_0)
+
+            if len(input) >= self.params['SizeBatch']:
+
+                batchdata_seqs = proc.processBatchSeqsWithParticles(input)
+
+                agent.train()
+                time_train_only_0 = time.time()
+
+                objective, _ = agent(batchdata_seqs, mode=1)
+                objective.backward()
+
+                optimizer.step()
+                optimizer.zero_grad()
+                time_train_only += (time.time() - time_train_only_0)
+
+                input = []
+
+                if episode % report_gap == report_gap - 1:
+
+                    time1 = time.time()
+                    time_train = time1 - time0
+                    time0 = time1
+
+                    print("Validating at episode {} ({}-th seq of {}-th epoch)".format(
+                        episode, idx_seq, idx_epoch))
+                    total_logP = 0.0
+                    total_num_token = 0.0
+
+                    input_dev = []
+                    agent.eval()
+
+                    for i_dev, one_seq_dev in enumerate(val_data):
+
+                        input_dev.append(
+                            proc.processSeq(one_seq_dev, n=1))
+
+                        if (i_dev + 1) % self.params['SizeBatch'] == 0 or \
+                                (i_dev == len(val_data) - 1 and (len(input_dev) % self.params['SizeBatch']) > 0):
+                            batchdata_seqs_dev = proc.processBatchSeqsWithParticles(
+                                input_dev)
+
+                            time_dev_only_0 = time.time()
+                            objective_dev, num_events_dev = agent(
+                                batchdata_seqs_dev, mode=1)
+                            time_dev_only = time.time() - time_dev_only_0
+
+                            total_logP -= float(objective_dev.data.sum())
+
+                            total_num_token += float(
+                                num_events_dev.data.sum() / (1 * 1.0))
+
+                            input_dev = []
+
+                    total_logP /= total_num_token
+
+                    message = "Episode {} ({}-th seq of {}-th epoch), loglik is {:.4f}".format(
+                        episode, idx_seq, idx_epoch, total_logP)
+                    logger.checkpoint(message)
+                    print(message)
+
+                    updated = None
+                    if total_logP > total_logP_best:
+                        total_logP_best = total_logP
+                        updated = True
+                        episode_best = episode
+                    else:
+                        updated = False
+                    message = "Current best loglik is {:.4f} (updated at episode {})".format(
+                        total_logP_best, episode_best)
+
+                    if updated:
+                        message += ", best updated at this episode"
+                        torch.save(
+                            agent.state_dict(), self.params['PathSave'])
+                    logger.checkpoint(message)
+
+                    print(message)
+                    episodes.append(episode)
+
+                    time1 = time.time()
+                    time_dev = time1 - time0
+                    time0 = time1
+                    message = "time to train {} episodes is {:.2f} and time for dev is {:.2f}".format(
+                        report_gap, time_train, time_dev)
+
+                    time_sample, time_train_only = 0.0, 0.0
+                    time_dev_only = 0.0
+                    #
+                    logger.checkpoint(message)
+                    print(message)
+        message = "training finished"
+        logger.checkpoint(message)
+        print(message)
+
+    def evaluate(self):
+        pass
 
     def predict(self):
         pass
