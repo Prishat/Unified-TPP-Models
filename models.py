@@ -381,6 +381,10 @@ class neuralHP:
         self.params = params
 
     def train(self, train_data, val_data):
+        random.seed(self.params['Seed'])
+        np.random.seed(self.params['Seed'])
+        torch.manual_seed(self.params['Seed'])
+
         hidden_dim = self.params['DimLSTM']
 
         agent = nhp.NeuralHawkes(
@@ -406,7 +410,7 @@ class neuralHP:
             sampling=sampling,
             device='cuda' if self.params['UseGPU'] else 'cpu'
         )
-        logger = processors.LogWriter(self.params['PathLog'], self.params)
+        #logger = processors.LogWriter(self.params['PathLog'], self.params)
 
         r"""
         we only update parameters that are only related to left2right machine
@@ -440,11 +444,17 @@ class neuralHP:
 
             # time_sample_0 = time.time()
             input.append(proc.processSeq(one_seq, n=1))
+            #print(len(input))
+            #print(input)
             # time_sample += (time.time() - time_sample_0)
 
             if len(input) >= self.params['SizeBatch']:
 
                 batchdata_seqs = proc.processBatchSeqsWithParticles(input)
+                #print('len(batchdata_seqs) := ',len(batchdata_seqs))
+                #print('batchdata_seqs[0] := ', batchdata_seqs[0])
+                #print('batchdata_seqs[5] := ', batchdata_seqs[5][:-2])
+                #batchdata_seqs[5] = batchdata_seqs[5][:-2]
 
                 agent.train()
                 time_train_only_0 = time.time()
@@ -498,7 +508,7 @@ class neuralHP:
 
                     message = "Episode {} ({}-th seq of {}-th epoch), loglik is {:.4f}".format(
                         episode, idx_seq, idx_epoch, total_logP)
-                    logger.checkpoint(message)
+                    #logger.checkpoint(message)
                     print(message)
 
                     updated = None
@@ -515,7 +525,7 @@ class neuralHP:
                         message += ", best updated at this episode"
                         torch.save(
                             agent.state_dict(), self.params['PathSave'])
-                    logger.checkpoint(message)
+                    #logger.checkpoint(message)
 
                     print(message)
                     episodes.append(episode)
@@ -529,10 +539,10 @@ class neuralHP:
                     time_sample, time_train_only = 0.0, 0.0
                     time_dev_only = 0.0
                     #
-                    logger.checkpoint(message)
+                    #logger.checkpoint(message)
                     print(message)
         message = "training finished"
-        logger.checkpoint(message)
+        #logger.checkpoint(message)
         print(message)
 
     def evaluate(self):

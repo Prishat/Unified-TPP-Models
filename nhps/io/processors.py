@@ -119,8 +119,7 @@ def sampleForIntegral(input, sampling=1, device=None):
     # mask_obs 12, mask_unobs 13, log_censor_probs, 14
 
 
-def processBatchParticles(
-    batch_of_seqs, idx_BOS, idx_EOS, idx_PAD, device=None):
+def processBatchParticles(batch_of_seqs, idx_BOS, idx_EOS, idx_PAD, device=None):
 
     device = device or 'cpu'
     device = torch.device(device)

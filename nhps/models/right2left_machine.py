@@ -3,8 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from nhps.models.cont_time_cell import CTLSTMCell
-from nhps.models.utils import makeHiddenForBound, makeHiddenForLambda
+from .cont_time_cell import CTLSTMCell
+from .utils import makeHiddenForBound, makeHiddenForLambda
 
 
 class Right2Left(nn.Module):

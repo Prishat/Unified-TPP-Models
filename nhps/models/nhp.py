@@ -12,9 +12,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from nhps.models.cont_time_cell import CTLSTMCell
-from nhps.models.right2left_machine import Right2Left
-from nhps.models.utils import makeHiddenForBound, makeHiddenForLambda
+from .cont_time_cell import CTLSTMCell
+from .right2left_machine import Right2Left
+from .utils import makeHiddenForBound, makeHiddenForLambda
 
 from torch.distributions.multinomial import Multinomial
 
@@ -22,7 +22,7 @@ from torch.distributions.multinomial import Multinomial
 class NeuralHawkes(nn.Module):
 
     def __init__(self, *, miss_mec=None,
-        total_num, hidden_dim=32, beta=1.0, device=None):
+                 total_num, hidden_dim=32, beta=1.0, device=None):
         super(NeuralHawkes, self).__init__()
 
         self.total_num = total_num
@@ -74,7 +74,7 @@ class NeuralHawkes(nn.Module):
                                              self.device, type_back, self.hidden_dim)
 
     def setMaskIntensity(self, mask_intensity):
-        #assert self.mask_intensity.device == neglect_mask.device, "Not same device?"
+        # assert self.mask_intensity.device == neglect_mask.device, "Not same device?"
         assert self.mask_intensity.dtype == mask_intensity.dtype, "Not same dtype?"
         assert self.mask_intensity.size(0) == mask_intensity.size(0), "Not same size?"
 
@@ -119,8 +119,8 @@ class NeuralHawkes(nn.Module):
             # only BOS to last event update LSTM
             # <s> CT-LSTM
 
-            emb_i = self.Emb(event[:, :, i ])
-            dtime_i = dtime[:, :, i + 1 ]
+            emb_i = self.Emb(event[:, :, i])
+            dtime_i = dtime[:, :, i + 1]
 
             cell_i, cell_bar_i, gate_decay_i, gate_output_i = self.rnn_cell(
                 emb_i, hidden_t_i_minus, cell_t_i_minus, cell_bar_im1
@@ -146,16 +146,16 @@ class NeuralHawkes(nn.Module):
         # these tensors shape : batch_size, num_particles, T+1, hidden_dim
         # cells and gates right after BOS, 1st event, ..., N-th event
         # hidden right before 1st event, ..., N-th event, End event (PAD)
-        all_cell = torch.stack( all_cell, dim=2)
-        all_cell_bar = torch.stack( all_cell_bar, dim=2)
-        all_gate_decay = torch.stack( all_gate_decay, dim=2)
-        all_gate_output = torch.stack( all_gate_output, dim=2)
-        all_hidden = torch.stack( all_hidden, dim=2 )
-        all_hidden_after_update = torch.stack( all_hidden_after_update, dim=2)
+        all_cell = torch.stack(all_cell, dim=2)
+        all_cell_bar = torch.stack(all_cell_bar, dim=2)
+        all_gate_decay = torch.stack(all_gate_decay, dim=2)
+        all_gate_output = torch.stack(all_gate_output, dim=2)
+        all_hidden = torch.stack(all_hidden, dim=2)
+        all_hidden_after_update = torch.stack(all_hidden_after_update, dim=2)
 
         return batch_size, num_particles, T_plus_2, \
-        all_cell, all_cell_bar, all_gate_decay, all_gate_output, \
-        all_hidden, all_hidden_after_update
+               all_cell, all_cell_bar, all_gate_decay, all_gate_output, \
+               all_hidden, all_hidden_after_update
 
     def getTarget(self, event, dtime):
         r"""
@@ -168,13 +168,13 @@ class NeuralHawkes(nn.Module):
 
         mask_complete[target_data >= self.total_num] = 0.0
 
-        target_data[target_data >= self.total_num] = 0 # PAD to be 0
+        target_data[target_data >= self.total_num] = 0  # PAD to be 0
         target = target_data
         return target, mask_complete
 
     def getSampledStates(
-        self, dtime_sampling, index_of_hidden_sampling,
-        all_cell, all_cell_bar, all_gate_output, all_gate_decay):
+            self, dtime_sampling, index_of_hidden_sampling,
+            all_cell, all_cell_bar, all_gate_output, all_gate_decay):
         r"""
         we output the sampled hidden states of the left-to-right machine
         states shape : batch_size * num_particles * T+1 * hidden_dim
@@ -182,24 +182,33 @@ class NeuralHawkes(nn.Module):
         index_of_hidden_sampling : batch_size * num_particles * max_len_sampling
         """
         batch_size, num_particles, T_plus_1, _ = all_cell.size()
+        # print('all_cell.size():= ',all_cell.size())
         _, _, max_len_sampling = dtime_sampling.size()
 
+        x = batch_size * num_particles * T_plus_1
+        index_of_hidden_sampling.view(-1)[index_of_hidden_sampling.view(-1) >= x] = 0
+
+        # print('batch_size * num_particles * T_plus_1 := ',batch_size * num_particles * T_plus_1)
+        # print('index_of_hidden_sampling.view(-1):= ', index_of_hidden_sampling.view(-1))
+        # print('len of index_of_hidden_sampling.view(-1):= ', len(index_of_hidden_sampling.view(-1)))
+        # print(all_cell.view(batch_size * num_particles * T_plus_1, self.hidden_dim )[index_of_hidden_sampling.view(-1), :])
+
         all_cell_sampling = all_cell.view(
-            batch_size * num_particles * T_plus_1, self.hidden_dim )[
-                index_of_hidden_sampling.view(-1), :].view(
-                    batch_size, num_particles, max_len_sampling, self.hidden_dim)
+            batch_size * num_particles * T_plus_1, self.hidden_dim)[
+                            index_of_hidden_sampling.view(-1), :].view(
+            batch_size, num_particles, max_len_sampling, self.hidden_dim)
         all_cell_bar_sampling = all_cell_bar.view(
-            batch_size * num_particles * T_plus_1, self.hidden_dim )[
-                index_of_hidden_sampling.view(-1), :].view(
-                    batch_size, num_particles, max_len_sampling, self.hidden_dim)
+            batch_size * num_particles * T_plus_1, self.hidden_dim)[
+                                index_of_hidden_sampling.view(-1), :].view(
+            batch_size, num_particles, max_len_sampling, self.hidden_dim)
         all_gate_output_sampling = all_gate_output.view(
-            batch_size * num_particles * T_plus_1, self.hidden_dim )[
-                index_of_hidden_sampling.view(-1), :].view(
-                    batch_size, num_particles, max_len_sampling, self.hidden_dim)
+            batch_size * num_particles * T_plus_1, self.hidden_dim)[
+                                   index_of_hidden_sampling.view(-1), :].view(
+            batch_size, num_particles, max_len_sampling, self.hidden_dim)
         all_gate_decay_sampling = all_gate_decay.view(
-            batch_size * num_particles * T_plus_1, self.hidden_dim )[
-                index_of_hidden_sampling.view(-1), :].view(
-                    batch_size, num_particles, max_len_sampling, self.hidden_dim)
+            batch_size * num_particles * T_plus_1, self.hidden_dim)[
+                                  index_of_hidden_sampling.view(-1), :].view(
+            batch_size, num_particles, max_len_sampling, self.hidden_dim)
 
         cy_sample, hy_sample = self.rnn_cell.decay(
             all_cell_sampling, all_cell_bar_sampling,
@@ -210,8 +219,8 @@ class NeuralHawkes(nn.Module):
         return hy_sample
 
     def getLambda(
-        self, batch_size, num_particles, T_plus_2,
-        target, mask_complete, mask_unobs, all_hidden, sampled_hidden ):
+            self, batch_size, num_particles, T_plus_2,
+            target, mask_complete, mask_unobs, all_hidden, sampled_hidden):
         r"""
         we output log_lambda for all cases:
         1. complete seq, i.e. union of partitions x and z
@@ -224,15 +233,15 @@ class NeuralHawkes(nn.Module):
         the 2. should be computed using hidden states of both directions
         """
 
-        all_lambda= F.softplus(self.hidden_lambda(all_hidden), beta=self.beta)
-        log_lambda= torch.log(all_lambda+ self.eps)
+        all_lambda = F.softplus(self.hidden_lambda(all_hidden), beta=self.beta)
+        log_lambda = torch.log(all_lambda + self.eps)
 
         log_lambda_target = log_lambda.view(
             batch_size * num_particles * (T_plus_2 - 1), self.total_num
         )[
             torch.arange(0, batch_size * num_particles * (T_plus_2 - 1),
                          dtype=torch.int64, device=self.device),
-            target.view( batch_size * num_particles * (T_plus_2 - 1) )
+            target.view(batch_size * num_particles * (T_plus_2 - 1))
         ].view(batch_size, num_particles, T_plus_2 - 1)
 
         log_lambda_target_complete = log_lambda_target * mask_complete
@@ -247,12 +256,12 @@ class NeuralHawkes(nn.Module):
         log_lambda_sum_unobs *= mask_unobs
 
         all_lambda_sample = F.softplus(
-            self.hidden_lambda(sampled_hidden), beta=self.beta )
+            self.hidden_lambda(sampled_hidden), beta=self.beta)
 
         return log_lambda_target_complete, log_lambda_target_unobs, all_lambda_sample
 
     def getIntegral(
-        self, lambda_sample, mask_sampling, duration ):
+            self, lambda_sample, mask_sampling, duration):
         r"""
         we output integral for both cases:
         1. p(x and z)---integral of total intensities conditioned on past
@@ -264,8 +273,8 @@ class NeuralHawkes(nn.Module):
         """
         lambda_sample_sum = lambda_sample.sum(dim=3)
         lambda_sample_mean = torch.sum(
-            lambda_sample_sum * mask_sampling, dim=2 ) / torch.sum(
-            mask_sampling, dim=2 )
+            lambda_sample_sum * mask_sampling, dim=2) / torch.sum(
+            mask_sampling, dim=2)
         integral = lambda_sample_mean * duration
 
         return integral
@@ -298,12 +307,14 @@ class NeuralHawkes(nn.Module):
         have meaningful values for both observed and unobserved event tokens
         however, all of these are only used when computing q(z | x)
         """
+        # print('forward.index_of_hidden_sampling := ', index_of_hidden_sampling)
+        # print(len(input))
 
         batch_size, num_particles, T_plus_2, \
         all_cell, all_cell_bar, all_gate_decay, all_gate_output, \
         all_hidden, all_hidden_after_update = self.getStates(event, dtime)
 
-        target, mask_complete = self.getTarget( event, dtime )
+        target, mask_complete = self.getTarget(event, dtime)
 
         sampled_hidden = self.getSampledStates(
             dtime_sampling, index_of_hidden_sampling,
@@ -314,7 +325,7 @@ class NeuralHawkes(nn.Module):
         log_lambda_target_complete, log_lambda_target_unobs, \
         all_lambda_sample = self.getLambda(
             batch_size, num_particles, T_plus_2,
-            target, mask_complete, mask_unobs, all_hidden, sampled_hidden )
+            target, mask_complete, mask_unobs, all_hidden, sampled_hidden)
         # batch_size * num_particles * T_plus_2-1
         # </s> \lambda_{k_i}(t_i) for events
 
@@ -331,7 +342,7 @@ class NeuralHawkes(nn.Module):
             T_obs_plus_2, \
             all_cell_obs, all_cell_bar_obs, all_gate_decay_obs, all_gate_output_obs, \
             all_hidden_obs, all_hidden_after_update_obs = self.right2left_machine(
-                event_obs, dtime_obs )
+                event_obs, dtime_obs)
 
             log_lambda_corrected_target_unobs, \
             all_lambda_corrected_sample = self.right2left_machine.getLambdaCorrected(
@@ -358,10 +369,10 @@ class NeuralHawkes(nn.Module):
 
         # <s> int_{0}^{T} lambda_sum dt for events
         integral_of_lambda_complete = self.getIntegral(
-            all_lambda_sample, mask_sampling, duration )
+            all_lambda_sample, mask_sampling, duration)
 
         integral_of_lambda_correctd_unobs = self.getIntegral(
-            all_lambda_corrected_sample, mask_sampling, duration )
+            all_lambda_corrected_sample, mask_sampling, duration)
 
         # batch_size * num_particles
         # </s> int_{0}^{T} lambda_sum dt for events
@@ -385,13 +396,13 @@ class NeuralHawkes(nn.Module):
 
         if weight is None:
             weight = torch.ones(size=[batch_size, num_particles],
-                               dtype=torch.float32, device=self.device)
+                                dtype=torch.float32, device=self.device)
             weight = weight / torch.sum(weight, dim=1, keepdim=True)
 
         if mode == 1:
             # complete log likelihood
-            objective = -torch.sum( logP_complete * weight )
-            num_events = torch.sum( mask_complete )
+            objective = -torch.sum(logP_complete * weight)
+            num_events = torch.sum(mask_complete)
 
         elif mode == 2:
             # incomplete log likelihood for observed events
@@ -406,8 +417,8 @@ class NeuralHawkes(nn.Module):
             r"""
             this mode will not likely be used
             """
-            objective = -torch.sum( logP_unobs * weight )
-            num_events = torch.sum( mask_unobs )
+            objective = -torch.sum(logP_unobs * weight)
+            num_events = torch.sum(mask_unobs)
 
         elif mode == 4:
             r"""
@@ -417,13 +428,13 @@ class NeuralHawkes(nn.Module):
             which is part of input in the log space
             for details, refer to the paper
             """
-            #normalized weights for each particle
+            # normalized weights for each particle
             logP_diff = logP_missingmec + logP_complete - logP_unobs
 
-            assert logP_diff.dim()==2, "logP_diff should be a matrix!"
-            assert logP_diff.size(0)==batch_size, "dim-0 batch size"
-            assert logP_diff.size(1)==num_particles, "dim-1 num particles"
-            objective = F.softmax( logP_diff, dim=1 )
+            assert logP_diff.dim() == 2, "logP_diff should be a matrix!"
+            assert logP_diff.size(0) == batch_size, "dim-0 batch size"
+            assert logP_diff.size(1) == num_particles, "dim-1 num particles"
+            objective = F.softmax(logP_diff, dim=1)
             r"""
             this step is computing weights and doing normalization
             for MBR, normalization is not necessary in theory
@@ -452,11 +463,11 @@ class NeuralHawkes(nn.Module):
             # this mode is used for training
 
             logP_diff = logP_complete - logP_unobs.detach()
-            assert logP_diff.dim()==2, "logP_diff should be a matrix!"
-            assert logP_diff.size(0)==batch_size, "dim-0 batch size"
-            assert logP_diff.size(1)==num_particles, "dim-1 num particles"
-            objective = -torch.sum( logP_diff.mean( dim=1 ) )
-            num_events = torch.sum( mask_obs )
+            assert logP_diff.dim() == 2, "logP_diff should be a matrix!"
+            assert logP_diff.size(0) == batch_size, "dim-0 batch size"
+            assert logP_diff.size(1) == num_particles, "dim-1 num particles"
+            objective = -torch.sum(logP_diff.mean(dim=1))
+            num_events = torch.sum(mask_obs)
 
         elif mode == 6:
 
@@ -471,19 +482,19 @@ class NeuralHawkes(nn.Module):
             # so this mode is ONLY used for eval
 
             logP_diff = logP_complete - logP_unobs.detach()
-            assert logP_diff.dim()==2, "logP_diff should be a matrix!"
-            assert logP_diff.size(0)==batch_size, "dim-0 batch size"
-            assert logP_diff.size(1)==num_particles, "dim-1 num particles"
-            logP_diff_max, _ = torch.max( logP_diff, dim=1, keepdim=True )
+            assert logP_diff.dim() == 2, "logP_diff should be a matrix!"
+            assert logP_diff.size(0) == batch_size, "dim-0 batch size"
+            assert logP_diff.size(1) == num_particles, "dim-1 num particles"
+            logP_diff_max, _ = torch.max(logP_diff, dim=1, keepdim=True)
             vec_num_particles = torch.empty(size=[batch_size], dtype=torch.float32,
-                                            device=self.device).fill_(num_particles*1.0)
+                                            device=self.device).fill_(num_particles * 1.0)
             est_logPx = torch.log(
                 torch.sum(
                     torch.exp(
                         logP_diff - logP_diff_max
-                ), dim=1 ) ) + logP_diff_max.squeeze() - torch.log(vec_num_particles)
-            objective = -torch.sum( est_logPx )
-            num_events = torch.sum( mask_obs )
+                    ), dim=1)) + logP_diff_max.squeeze() - torch.log(vec_num_particles)
+            objective = -torch.sum(est_logPx)
+            num_events = torch.sum(mask_obs)
 
         elif mode == 7:
             r"""
@@ -493,12 +504,12 @@ class NeuralHawkes(nn.Module):
             Pr(z | x, x is the observed part) --- the true probability dist
             Precise derivation can be found in paper
             """
-            inclusiveKL = torch.mean( -logP_unobs, dim=1 )
-            objective = torch.mean( inclusiveKL )
+            inclusiveKL = torch.mean(-logP_unobs, dim=1)
+            objective = torch.mean(inclusiveKL)
             r"""
             revisit how to get KL div per token
             """
-            num_events = torch.sum( mask_unobs )
+            num_events = torch.sum(mask_unobs)
             r"""
             why count the num of unobserved events?
             because it is KL divergence of q(u | s) and Pr(u | s)
@@ -511,7 +522,7 @@ class NeuralHawkes(nn.Module):
             KL(q | Pr)
             """
             distance = logP_unobs - logP_complete.detach() - logP_missingmec
-            exclusiveKL = torch.mean( 0.5 * distance * distance, dim=1 )
+            exclusiveKL = torch.mean(0.5 * distance * distance, dim=1)
             r"""
             since this is noisy, we can add a baseline to it
             we can use the same exp baseline as Lin and Eisner NAACL 2018 did
@@ -521,11 +532,11 @@ class NeuralHawkes(nn.Module):
             To compute this baseline also needs all the particles and
             their prob under known missingness mechanism
             """
-            objective = torch.mean( exclusiveKL )
+            objective = torch.mean(exclusiveKL)
             r"""
             revisit how to get KL div per token
             """
-            num_events = torch.sum( mask_unobs )
+            num_events = torch.sum(mask_unobs)
 
         elif mode == 9:
             r"""
@@ -536,11 +547,11 @@ class NeuralHawkes(nn.Module):
             """
             assert logP_unobs.size(1) == 1, "Only one partition when this mode is used"
             assert mask_unobs.size(1) == 1, "Only one partition when this mode is used"
-            objective = torch.mean( logP_unobs, dim=1 )
+            objective = torch.mean(logP_unobs, dim=1)
             num_events = mask_unobs.sum(dim=2).sum(dim=1)
 
         else:
-            raise Exception( "Unknown mode : {}".format(mode) )
+            raise Exception("Unknown mode : {}".format(mode))
 
         return objective, num_events
 
@@ -611,8 +622,8 @@ class NeuralHawkes(nn.Module):
         return all_total_lambda.detach().data
 
     def getBound(
-        self, hidden_lambda, states, dtime, particle_num,
-        dtime_back=None):
+            self, hidden_lambda, states, dtime, particle_num,
+            dtime_back=None):
         r"""
         work with a batch of particles
         output torch tensor data
@@ -647,11 +658,11 @@ class NeuralHawkes(nn.Module):
         hy_forward = makeHiddenForLambda(states, dtime)
         # particle_num * num * hidden_dim
         projected_hidden = hidden_lambda(hy_forward)
-        lambda_t = F.softplus(projected_hidden, beta=self.beta )
+        lambda_t = F.softplus(projected_hidden, beta=self.beta)
         return lambda_t.detach().data
 
     def computeLambdaProposal(
-        self, hidden_lambda, states, dtime
+            self, hidden_lambda, states, dtime
             , dtime_back=None):
 
         """
@@ -674,12 +685,12 @@ class NeuralHawkes(nn.Module):
 
         else:
 
-            lambda_t = F.softplus(projected_hidden, beta=self.beta )
+            lambda_t = F.softplus(projected_hidden, beta=self.beta)
         # particle_num * num * total_num
         return lambda_t.detach().data
 
     def sample_unobs_batch(self, dtime_bound, particle_num,
-        num=100, verbose=False, resamplng=False):
+                           num=100, verbose=False, resamplng=False):
         r"""
         1. we do sampling in a batch
         2. we sample for diff particles independently
@@ -719,11 +730,11 @@ class NeuralHawkes(nn.Module):
         lambda_bound *= self.mask_intensity.unsqueeze(dim=0)
 
         lambda_bound_sum = torch.sum(
-            lambda_bound, dim=1, keepdim=True)#.detach()
+            lambda_bound, dim=1, keepdim=True)  # .detach()
 
         accepted_dtimes = torch.zeros(size=[particle_num],
                                       dtype=torch.float32, device=self.device)
-        #accepted_ids = self.device.LongTensor(self.particle_num)
+        # accepted_ids = self.device.LongTensor(self.particle_num)
         accepted_types = torch.empty(size=[particle_num], dtype=torch.int64,
                                      device=self.device).fill_(self.idx_PAD)
 
@@ -762,17 +773,17 @@ class NeuralHawkes(nn.Module):
             drawing a new accepted event
             """
             if verbose:
-                #print("{}-th step in sample_unobs_batch".format(cnt_step))
+                # print("{}-th step in sample_unobs_batch".format(cnt_step))
                 cnt_step += 1
 
             E.exponential_(1.0)
             U.uniform_(0.0, 1.0)
             mat_dtime = E / lambda_bound_sum
             # particle_num * num(=100)
-            mat_dtime = mat_dtime.cumsum(dim=1)#.detach()
+            mat_dtime = mat_dtime.cumsum(dim=1)  # .detach()
 
             # mat_dtime added by current accum dtime
-            mat_dtime += accepted_dtimes.unsqueeze(1)#.detach()
+            mat_dtime += accepted_dtimes.unsqueeze(1)  # .detach()
 
             """
             although we only need to know lambda q to propose events
@@ -788,16 +799,16 @@ class NeuralHawkes(nn.Module):
             if self.right2left:
 
                 mat_dtime_back = dtime_bound - mat_dtime
-                mat_dtime_back[ mat_dtime_back < 0.0 ] = 0.0
+                mat_dtime_back[mat_dtime_back < 0.0] = 0.0
 
                 mat_lambda_t = self.computeLambdaProposal(
                     self.hidden_lambda, self.states, mat_dtime,
-                    mat_dtime_back )
+                    mat_dtime_back)
 
             else:
 
                 mat_lambda_t = self.computeLambdaProposal(
-                    self.hidden_lambda, self.states, mat_dtime )
+                    self.hidden_lambda, self.states, mat_dtime)
 
             # lambda of target dist do not need this mask
             mat_lambda_t *= self.mask_intensity.unsqueeze(dim=0).unsqueeze(dim=0)
@@ -819,27 +830,27 @@ class NeuralHawkes(nn.Module):
             # and accumulate dtime on those particles
             # -1 because that is the index of finally accumulated dtimes
             accepted_dtimes[not_finished & not_accepted] = \
-            mat_dtime[:, -1][not_finished & not_accepted]#.detach()
+                mat_dtime[:, -1][not_finished & not_accepted]  # .detach()
 
             # for the accepted proposals ( i.e. u < 1.0 )
             # find their accepted dtimes and lambdas
             mat_dtime_with_unacc_large = mat_dtime.clone()
-            mat_dtime_with_unacc_large[ u >= 1.0 ] = mat_dtime.max() + 1.0
+            mat_dtime_with_unacc_large[u >= 1.0] = mat_dtime.max() + 1.0
             # particle_num * num
             dtime_each_particle, dtime_id_each_particle = \
-            mat_dtime_with_unacc_large.min(dim=1)
+                mat_dtime_with_unacc_large.min(dim=1)
             # particle_num
             accepted_dtimes[indices_tobe_updated] = \
-            dtime_each_particle[indices_tobe_updated]#.detach()
+                dtime_each_particle[indices_tobe_updated]  # .detach()
 
             lambda_t_p_each_particle = mat_lambda_t_p[
-                ranger, dtime_id_each_particle, :]
+                                       ranger, dtime_id_each_particle, :]
             lambda_t_each_particle = mat_lambda_t[
-                ranger, dtime_id_each_particle, :]#.detach()
+                                     ranger, dtime_id_each_particle, :]  # .detach()
             # particle_num * self.unobs_num
 
             max_lambda_each_particle, indices_max_lambda_each_particle = \
-            lambda_t_each_particle.max(dim=1)
+                lambda_t_each_particle.max(dim=1)
 
             """
             according to which event type is generated,
@@ -849,18 +860,17 @@ class NeuralHawkes(nn.Module):
                 ranger, indices_max_lambda_each_particle]
 
             accepted_types[indices_tobe_updated] = \
-            indices_max_lambda_each_particle[indices_tobe_updated]#.detach()
-
+                indices_max_lambda_each_particle[indices_tobe_updated]  # .detach()
 
             """
             compute log_lambda_p and log_lambda_q
             """
             log_lambda_p = torch.log(chosen_lambda_p_each_particle + self.eps)
-            accepted_log_lambda_p[indices_tobe_updated] =\
-            log_lambda_p[indices_tobe_updated]
+            accepted_log_lambda_p[indices_tobe_updated] = \
+                log_lambda_p[indices_tobe_updated]
             log_lambda_q = torch.log(max_lambda_each_particle + self.eps)
-            accepted_log_lambda_q[indices_tobe_updated] =\
-            log_lambda_q[indices_tobe_updated]
+            accepted_log_lambda_q[indices_tobe_updated] = \
+                log_lambda_q[indices_tobe_updated]
 
             # once they are updated, then they are marked as finished
             finished[indices_accepted_particles] = 1
@@ -874,7 +884,7 @@ class NeuralHawkes(nn.Module):
         return accepted_types, accepted_dtimes, accepted_log_lambda_p, accepted_log_lambda_q
 
     def initResampling(self, one_seq, num_points_per_obs_for_integral,
-        minimum_num_points_per_interval):
+                       minimum_num_points_per_interval):
         """
         sample points for each interval
         we choose a total # of points to use for the entire duration
@@ -883,17 +893,17 @@ class NeuralHawkes(nn.Module):
         note: there should be at least one point in each interval
         """
         total_points = num_points_per_obs_for_integral * (len(one_seq) - 1)
-        num_points_for_integral = [1] * (len(one_seq)-1)
+        num_points_for_integral = [1] * (len(one_seq) - 1)
         total_t = one_seq[-1]['time_since_start'] - one_seq[0]['time_since_start']
         total_t = max(1e-5, total_t)
         for idx_interval in range(len(one_seq) - 1):
-            time_ratio = (one_seq[idx_interval+1]['time_since_last_event']) / total_t
+            time_ratio = (one_seq[idx_interval + 1]['time_since_last_event']) / total_t
             num_points_this_interval = max(minimum_num_points_per_interval, int(time_ratio * total_points))
             num_points_for_integral[idx_interval] = num_points_this_interval
         return num_points_for_integral
 
     def prepareResamplingInterval(self,
-        num_points_this_interval, item, particle_num):
+                                  num_points_this_interval, item, particle_num):
         """
         sample time points for this interval
         """
@@ -943,11 +953,11 @@ class NeuralHawkes(nn.Module):
             dtype=torch.float32, device=self.device)
 
         return points_not_covered, index_not_covered, \
-        total_lambda_p_atsampledpoints, total_lambda_q_atsampledpoints, \
-        sampled_points_integral
+               total_lambda_p_atsampledpoints, total_lambda_q_atsampledpoints, \
+               sampled_points_integral
 
     def printDebug(self, cnt_call, i_item, total_dtime, dtime_bound,
-        cnt, max_len, types, dtimes, logPs):
+                   cnt, max_len, types, dtimes, logPs):
         print("\n\n")
         print(
             "{}-th call of sample_unobs_batch for {}-th item".format(
@@ -965,15 +975,15 @@ class NeuralHawkes(nn.Module):
         print("\n")
 
     def computeLambdaAtSampledTimes(self,
-        sampled_points_integral, num_points_this_interval,
-        particle_num, dtimes, dtime_bound, total_dtime, finished,
-        total_lambda_p_atsampledpoints, total_lambda_q_atsampledpoints,
-        points_not_covered, index_not_covered
-        ):
+                                    sampled_points_integral, num_points_this_interval,
+                                    particle_num, dtimes, dtime_bound, total_dtime, finished,
+                                    total_lambda_p_atsampledpoints, total_lambda_q_atsampledpoints,
+                                    points_not_covered, index_not_covered
+                                    ):
         # track the diff :
         # sampled time points minus current total dtime
         # note: newly generated&accepted dtime not used yet
-        integral_dtime = sampled_points_integral - total_dtime.repeat(num_points_this_interval)\
+        integral_dtime = sampled_points_integral - total_dtime.repeat(num_points_this_interval) \
             .reshape(num_points_this_interval, particle_num).transpose(0, 1)
         # if it is > 0
         # sampled time points larger
@@ -983,7 +993,7 @@ class NeuralHawkes(nn.Module):
         # sampled time points are covered by this new dtime
         # so we have to compute the lambdas at them now
         # otherwise, they will not be toched again when the algo proceeds
-        right_integral_mask = integral_dtime <\
+        right_integral_mask = integral_dtime < \
                               dtimes.unsqueeze(1).expand(particle_num, num_points_this_interval)
         # shape = [particle_num, num_points_this_interval
         # if both true, then we will compute lambdas
@@ -1016,12 +1026,12 @@ class NeuralHawkes(nn.Module):
         assert (sampled_points_back < 0.0).sum() < 1, "sampled points back not > 0?"
 
         if torch.any(integral_mask):
-            total_lambda_p_atsampledpoints[integral_mask] =\
-            self.computeTotalLambda(
-                True, integral_dtime)[integral_mask]
-            total_lambda_q_atsampledpoints[integral_mask] =\
-            self.computeTotalLambda(
-                False, integral_dtime, sampled_points_back)[integral_mask]
+            total_lambda_p_atsampledpoints[integral_mask] = \
+                self.computeTotalLambda(
+                    True, integral_dtime)[integral_mask]
+            total_lambda_q_atsampledpoints[integral_mask] = \
+                self.computeTotalLambda(
+                    False, integral_dtime, sampled_points_back)[integral_mask]
         """
         for each dtime, it may jump over 0, 1, 2, ... time points
         each particle may jump over diff # of points
@@ -1042,9 +1052,9 @@ class NeuralHawkes(nn.Module):
         index_not_covered[integral_mask] = 0
 
     def updateSumLogLambda(self,
-        sum_log_lambda_p, sum_log_lambda_q,
-        log_lambda_p, log_lambda_q,
-        indices_tobe_updated):
+                           sum_log_lambda_p, sum_log_lambda_q,
+                           log_lambda_p, log_lambda_q,
+                           indices_tobe_updated):
         """
         for this proposed event generated by thinning algorithm
         we need to update the sum_log_lambda_p and _q
@@ -1053,17 +1063,17 @@ class NeuralHawkes(nn.Module):
         and it does not exceed max len
         """
         sum_log_lambda_p[indices_tobe_updated] += \
-        log_lambda_p[indices_tobe_updated]
+            log_lambda_p[indices_tobe_updated]
         sum_log_lambda_q[indices_tobe_updated] += \
-        log_lambda_q[indices_tobe_updated]
+            log_lambda_q[indices_tobe_updated]
         # Nothing should necessarily be returned -- all the operations are in-place.
 
     def computeIntegralInterval(self,
-        points_not_covered, index_not_covered,
-        sampled_points_integral, total_dtime, dtime_bound,
-        num_points_this_interval, particle_num,
-        total_lambda_p_atsampledpoints,
-        total_lambda_q_atsampledpoints):
+                                points_not_covered, index_not_covered,
+                                sampled_points_integral, total_dtime, dtime_bound,
+                                num_points_this_interval, particle_num,
+                                total_lambda_p_atsampledpoints,
+                                total_lambda_q_atsampledpoints):
         """
         integral computation for this interval is supposed to finished now
         but because some particles may reach max len
@@ -1074,21 +1084,21 @@ class NeuralHawkes(nn.Module):
         """
         assert points_not_covered.sum() >= 0, "over covered?"
         integral_dtime = sampled_points_integral - \
-        total_dtime.repeat(num_points_this_interval).reshape(
-            num_points_this_interval, particle_num).transpose(0, 1)
+                         total_dtime.repeat(num_points_this_interval).reshape(
+                             num_points_this_interval, particle_num).transpose(0, 1)
         # assert (integral_dtime[index_not_covered] >= 0.0).all(), "non-covered sampled points are covered? WTH..."
         sampled_points_back = dtime_bound - sampled_points_integral
         sampled_points_back = sampled_points_back.repeat(particle_num).reshape(particle_num, -1)
         total_lambda_p_atsampledpoints[index_not_covered] = \
-        self.computeTotalLambda(
-            True, integral_dtime)[index_not_covered]
+            self.computeTotalLambda(
+                True, integral_dtime)[index_not_covered]
         # note that we can input time_back anyway
         # because if it is not smoothing , i.e. filtering
         # then right to left machine is not used
         # so time_back is not used anyway
         total_lambda_q_atsampledpoints[index_not_covered] = \
-        self.computeTotalLambda(
-            False, integral_dtime, sampled_points_back)[index_not_covered]
+            self.computeTotalLambda(
+                False, integral_dtime, sampled_points_back)[index_not_covered]
         points_not_covered -= torch.sum(index_not_covered, dim=1)
         assert (points_not_covered == 0).all(), "not all sampled time points be covred?"
         """
@@ -1100,10 +1110,10 @@ class NeuralHawkes(nn.Module):
         return integral_p, integral_q
 
     def computeWeight(self, i_item, len_seq,
-        hy_forward_befre_obs, type_event_obs,
-        sum_log_lambda_p, sum_log_lambda_q, integral_p, integral_q,
-        log_pmiss, log_weights
-        ):
+                      hy_forward_befre_obs, type_event_obs,
+                      sum_log_lambda_p, sum_log_lambda_q, integral_p, integral_q,
+                      log_pmiss, log_weights
+                      ):
         """
         if this observed event is not EOS
         we should consider it in log_p
@@ -1124,7 +1134,7 @@ class NeuralHawkes(nn.Module):
             compute lambda p for this obs
             """
             projected_hy = self.hidden_lambda(hy_forward_befre_obs)
-            all_lambda_t_p = F.softplus(projected_hy, beta=self.beta )
+            all_lambda_t_p = F.softplus(projected_hy, beta=self.beta)
             lambda_t_p_each_particle = all_lambda_t_p[:, type_event_obs]
             log_lambda_p = torch.log(
                 lambda_t_p_each_particle + self.eps)
@@ -1173,7 +1183,7 @@ class NeuralHawkes(nn.Module):
         positions_available = choices_cnt - 1
         positions_available[positions_available < 0] = 0
 
-        positions_available_ext = positions_available.repeat(particle_num)\
+        positions_available_ext = positions_available.repeat(particle_num) \
             .reshape(particle_num, particle_num)
         sender_indices = list(arange_mat.T[arange_mat < positions_available_ext])
         receiver_indices = list(np.arange(particle_num)[choices_cnt == 0])
@@ -1195,18 +1205,18 @@ class NeuralHawkes(nn.Module):
         :rtype: bool
         """
         weights = torch.exp(log_weights)
-        effective_sampling_size = (weights.sum()**2 / (weights**2).sum())
+        effective_sampling_size = (weights.sum() ** 2 / (weights ** 2).sum())
         threshold = threshold_ratio * particle_num
         return effective_sampling_size < threshold
 
     def sample_particles(self,
-        particle_num, one_seq, num_unobs_tokens,
-        num_points_per_obs_for_integral=1,
-        num=100, verbose=False,
-        resampling=False,
-        minimum_num_points_per_interval=1,
-        resampling_threshold_ratio=0.5,
-        need_eliminate_log_base=False):
+                         particle_num, one_seq, num_unobs_tokens,
+                         num_points_per_obs_for_integral=1,
+                         num=100, verbose=False,
+                         resampling=False,
+                         minimum_num_points_per_interval=1,
+                         resampling_threshold_ratio=0.5,
+                         need_eliminate_log_base=False):
         """
 
         :param int particle_num:
@@ -1236,11 +1246,11 @@ class NeuralHawkes(nn.Module):
         duration = torch.empty(size=[particle_num], dtype=torch.float32,
                                device=self.device).fill_(float(one_seq[-1]['time_since_start']))
 
-        events_particles = torch.empty(size=[particle_num, len_seq+max_len],
+        events_particles = torch.empty(size=[particle_num, len_seq + max_len],
                                        dtype=torch.int64, device=self.device).fill_(self.idx_PAD)
         events_particles[:, 0].fill_(self.idx_BOS)
         # events particles do not have EOS
-        dtimes_particles = torch.zeros(size=[particle_num, len_seq+max_len],
+        dtimes_particles = torch.zeros(size=[particle_num, len_seq + max_len],
                                        dtype=torch.float32, device=self.device)
 
         events_obs = torch.empty(size=[particle_num, len_seq], dtype=torch.int64, device=self.device)
@@ -1250,15 +1260,15 @@ class NeuralHawkes(nn.Module):
         dtimes_obs = torch.zeros(size=[particle_num, len_seq], dtype=torch.float32, device=self.device)
 
         mask_obs = torch.zeros(
-            size=[particle_num, len_seq+max_len], dtype=torch.float32, device=self.device)
+            size=[particle_num, len_seq + max_len], dtype=torch.float32, device=self.device)
         mask_unobs = torch.zeros(
-            size=[particle_num, len_seq+max_len], dtype=torch.float32, device=self.device)
+            size=[particle_num, len_seq + max_len], dtype=torch.float32, device=self.device)
         mask_true = torch.ones(
-            size=[particle_num], dtype=torch.float32, device=self.device )
+            size=[particle_num], dtype=torch.float32, device=self.device)
 
-        dtime_backward = torch.zeros(size=[particle_num, len_seq+max_len], dtype=torch.float32,
+        dtime_backward = torch.zeros(size=[particle_num, len_seq + max_len], dtype=torch.float32,
                                      device=self.device)
-        index_of_hidden_backward = torch.zeros(size=[particle_num, len_seq+max_len],
+        index_of_hidden_backward = torch.zeros(size=[particle_num, len_seq + max_len],
                                                dtype=torch.int64, device=self.device)
 
         ranger = torch.arange(0, particle_num, dtype=torch.int64, device=self.device)
@@ -1324,11 +1334,11 @@ class NeuralHawkes(nn.Module):
                 num_points_this_interval = num_points_for_integral[i_item]
                 points_not_covered, index_not_covered, \
                 total_lambda_p_atsampledpoints, \
-                total_lambda_q_atsampledpoints,\
+                total_lambda_q_atsampledpoints, \
                 sampled_points_integral = self.prepareResamplingInterval(
-                num_points_this_interval, item, particle_num)
+                    num_points_this_interval, item, particle_num)
 
-            dtime_bound.fill_( float(item['time_since_last_event']) )
+            dtime_bound.fill_(float(item['time_since_last_event']))
             total_dtime.fill_(0.0)
 
             events_obs[:, i_item + 1] = int(item['type_event'])
@@ -1380,7 +1390,7 @@ class NeuralHawkes(nn.Module):
                                     cnt, max_len, types, dtimes, torch.exp(log_weights))
 
                 cnt_call += 1
-                assert cnt_call <= max_len[0],\
+                assert cnt_call <= max_len[0], \
                     "for each item, impossible to sample > {} steps, because it is the max len".format(max_len)
 
                 if resampling and resampling_enabled_this_interval:
@@ -1430,16 +1440,16 @@ class NeuralHawkes(nn.Module):
                     self.updateSumLogLambda(
                         sum_log_lambda_p, sum_log_lambda_q,
                         log_lambda_p, log_lambda_q,
-                        indices_tobe_updated )
+                        indices_tobe_updated)
 
                 types_to_update[indices_tobe_updated] = \
-                types[indices_tobe_updated] #.detach()
+                    types[indices_tobe_updated]  # .detach()
                 dtimes_to_update[indices_tobe_updated] = \
-                dtimes[indices_tobe_updated] #.detach()
+                    dtimes[indices_tobe_updated]  # .detach()
                 updated_with_this[indices_tobe_updated] = 1
 
                 time_so_far[indices_tobe_updated] += \
-                dtimes[indices_tobe_updated] #.detach()
+                    dtimes[indices_tobe_updated]  # .detach()
                 cnt[indices_tobe_updated] += 1
 
                 """
@@ -1487,7 +1497,7 @@ class NeuralHawkes(nn.Module):
                         (
                             types_to_update,
                             dtimes_to_update,
-                            updated_with_this ) )
+                            updated_with_this))
                     updated_with_this.fill_(0)
 
                 # update finished
@@ -1505,7 +1515,7 @@ class NeuralHawkes(nn.Module):
                     sampled_points_integral, total_dtime, dtime_bound,
                     num_points_this_interval, particle_num,
                     total_lambda_p_atsampledpoints,
-                    total_lambda_q_atsampledpoints )
+                    total_lambda_q_atsampledpoints)
 
             # update with observed events
 
@@ -1516,8 +1526,8 @@ class NeuralHawkes(nn.Module):
             types_to_update.fill_(type_event_obs)
             updated_with_this.fill_(1)
 
-            events_particles[ranger, current_step] = type_event_obs#.detach()
-            dtimes_particles[ranger, current_step] = dtimes_to_update#.detach()
+            events_particles[ranger, current_step] = type_event_obs  # .detach()
+            dtimes_particles[ranger, current_step] = dtimes_to_update  # .detach()
 
             if i_item < len(one_seq) - 2:
                 mask_obs[ranger, current_step] = mask_true
@@ -1608,18 +1618,18 @@ class NeuralHawkes(nn.Module):
             # finish if resampling
         # finish looping over obs seq
 
-        lens = cnt + len_seq - 2 # total # of obs + unobs events
+        lens = cnt + len_seq - 2  # total # of obs + unobs events
         max_of_lens = lens.max()
 
         # trim extra useless padding
-        events_particles = events_particles[:, :max_of_lens + 2 ]
-        dtimes_particles = dtimes_particles[:, :max_of_lens + 2 ]
+        events_particles = events_particles[:, :max_of_lens + 2]
+        dtimes_particles = dtimes_particles[:, :max_of_lens + 2]
 
         mask_obs = mask_obs[:, :max_of_lens + 2]
         mask_unobs = mask_unobs[:, :max_of_lens + 2]
 
-        dtime_backward = dtime_backward[:, :max_of_lens + 2 ]
-        index_of_hidden_backward = index_of_hidden_backward[:, :max_of_lens + 2 ]
+        dtime_backward = dtime_backward[:, :max_of_lens + 2]
+        index_of_hidden_backward = index_of_hidden_backward[:, :max_of_lens + 2]
         r"""
         Note that we need to operate the index_of_hidden_backward
         so it can index the right positions when the indexed tensor is flatten
@@ -1627,7 +1637,7 @@ class NeuralHawkes(nn.Module):
         for i-th row of the matrix, add all elements by (len_seq - 1) * particle_num
         """
         indices_mat = torch.arange(0, particle_num, dtype=torch.int64,
-            device=self.device).unsqueeze(1).expand(particle_num, max_of_lens+2)
+                                   device=self.device).unsqueeze(1).expand(particle_num, max_of_lens + 2)
         indices_mat = (len_seq - 1) * indices_mat
         index_of_hidden_backward += indices_mat
         r"""
@@ -1645,19 +1655,21 @@ class NeuralHawkes(nn.Module):
         if need_eliminate_log_base:
             log_weights = self.eliminate_log_base(log_weights)
         return [
-            events_particles, # 0: particle_num * len_complete
-            dtimes_particles, # 1: particle_num * len_complete
-            log_weights, # 2: particle_num # If resampling is off, this variable is meaningless.
-            duration, # 3: particle_num
-            lens, # 4: particle_num # lens of proposed complete seqs (without BOS EOS)
-            events_obs, # 5: particle_num * len_obs
-            dtimes_obs, # 6: particle_num * len_obs
-            dtime_backward, # 7: particle_num * len_complete
-            index_of_hidden_backward, # 8: particle_num * len_complete
-            mask_obs, # 9: particle_num * len_complete # 1.0 for observed events all others including BOS EOS PAD are all 0.0
-            mask_unobs # 10: particle_num * len_complete # 1.0 for unobserved events all others including BOS EOS PAD are all 0.0
+            events_particles,  # 0: particle_num * len_complete
+            dtimes_particles,  # 1: particle_num * len_complete
+            log_weights,  # 2: particle_num # If resampling is off, this variable is meaningless.
+            duration,  # 3: particle_num
+            lens,  # 4: particle_num # lens of proposed complete seqs (without BOS EOS)
+            events_obs,  # 5: particle_num * len_obs
+            dtimes_obs,  # 6: particle_num * len_obs
+            dtime_backward,  # 7: particle_num * len_complete
+            index_of_hidden_backward,  # 8: particle_num * len_complete
+            mask_obs,
+            # 9: particle_num * len_complete # 1.0 for observed events all others including BOS EOS PAD are all 0.0
+            mask_unobs
+            # 10: particle_num * len_complete # 1.0 for unobserved events all others including BOS EOS PAD are all 0.0
             # log_censor_probs # 11: need to be filled by missing mec
-            ]
+        ]
 
     @staticmethod
     def eliminate_log_base(vector):
