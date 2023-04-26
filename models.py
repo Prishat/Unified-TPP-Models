@@ -101,7 +101,7 @@ class njsde:
         self.tspan = tspan
         TS = ts
         nseqs = len(TS)
-        dim_c, dim_h, dim_N, dt = 10, 10, 22, 1.0 / 30.0
+        dim_c, dim_h, dim_N, dt = 10, 10, self.params['num_types'], 1.0 / 30.0
 
         TSTR = TS[:int(nseqs * 0.2 * self.params['fold'])] + TS[int(nseqs * 0.2 * (self.params['fold'] + 1)):]
         TSVA = TS[int(nseqs * 0.2 * self.params['fold']):int(nseqs * 0.2 * self.params['fold']) + self.params[

@@ -79,6 +79,45 @@ class ATMDataset:
         weight = [len(self.event) / count[k] for k in sorted(count.keys())]
         return weight
 
+    @staticmethod
+    def process_njsde(data):
+
+        for i in range(len(data)):
+            x = data[i][0][0]
+
+            for j in range(len(data[i][0])):
+                data[i][0][j] -= x
+
+        ts = np.swapaxes(data, 1, 2)
+
+        ts[:, :, 1].astype(int)
+        # print(ts.shape)
+        # print(ts[0][2])
+
+        l = []
+        for x in ts:
+            # print(x.tolist()[2])
+
+            x = x.tolist()
+            # print(len(x))
+            temp = [[x[i][0], int(x[i][1])] for i in range(len(x))]
+
+            # print(temp)
+            # break
+            l.append(list(map(tuple, temp)))
+
+        tmax = l[0][0][0]
+        tmin = l[0][0][0]
+
+        for i in range(len(l)):
+            for j in range(len(l[i])):
+                tmax = max(tmax, l[i][j][0])
+                tmin = min(tmin, l[i][j][0])
+
+        tspan = (0.0, (tmax - tmin) * 1.0)
+
+        return l, tspan
+
 
 class stackOverflow:
     def __init__(self, params, path):
@@ -149,5 +188,37 @@ class nhpDatareader:
         data = pkl_train['seqs']
         data_dev = pkl_dev['seqs']
         total_event_num = pkl_train['total_num']
+
+        #if (to_njsde):
+        #    return self.process_njsde()
+        self.data = data
+        self.data_dev = data_dev
+        self.total_event_num = total_event_num
             
         return data, data_dev, total_event_num
+
+    def process_njsde(self, val=False):
+        train = []
+        if val:
+            data = self.data_dev
+        else:
+            data = self.data
+
+        for i in range(len(data)):
+            seq = []
+            for j in range(len(data[i])):
+                seq.append((data[i][j]['time_since_start'], data[i][j]['type_event']))
+
+            train.append(seq)
+
+        tmax = train[0][0][0]
+        tmin = train[0][0][0]
+
+        for i in range(len(train)):
+            for j in range(len(train[i])):
+                tmax = max(tmax, train[i][j][0])
+                tmin = min(tmin, train[i][j][0])
+
+        tspan = (0.0, (tmax-tmin)*1.0)
+
+        return train, tspan

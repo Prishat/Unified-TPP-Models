@@ -18,6 +18,7 @@ njsde_params = {'niters':100,
                 'batch_size':1,
                 'nsave':10,
                 'fold':0,
+                'num_types':22,
                 'restart':False,
                 'evnt_align':False,
                 'seed0':False,
@@ -29,3 +30,5 @@ atm_params = {'seq_len': 10}
 
 thp_data_params = {"data":"./mimic/fold1/",
                    "batch_size":4}
+
+nhp_dataset_params = {'PathData':'./data/'}
