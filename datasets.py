@@ -1,7 +1,10 @@
 import pandas
 from tqdm import tqdm
 import numpy as np
+
 import torch
+from torch.utils.data import DataLoader
+
 from collections import Counter
 import math
 import random
@@ -117,6 +120,81 @@ class ATMDataset:
         tspan = (0.0, (tmax - tmin) * 1.0)
 
         return l, tspan
+
+    @staticmethod
+    def process_thp(train_set, test_set, batch_size=4):
+
+        for i in range(len(train_set)):
+            x = train_set[i][0][0]
+
+            for j in range(len(train_set[i][0])):
+                train_set[i][0][j] -= x
+
+        for i in range(len(test_set)):
+            x = test_set[i][0][0]
+
+            for j in range(len(test_set[i][0])):
+                test_set[i][0][j] -= x
+
+        train = []
+        test = []
+        types = []
+
+        for i in range(len(train_set)):
+            tot = []
+            t = []
+            tot.append(train_set[i][0][0])
+
+            for j in range(1, len(train_set[i][0]), 1):
+                # print(tot[j-1])
+                # print(train_set[i][0][j])
+                tot.append(tot[j - 1] + train_set[i][0][j])
+
+            for x in train_set[i][1]:
+                types.append(x)
+
+            t.append(tot)
+            t.append(train_set[i][0])
+            t.append(train_set[i][1])
+            train.append(t)
+
+        for i in range(len(test_set)):
+            tot = []
+            t = []
+            tot.append(test_set[i][0][0])
+
+            for j in range(1, len(test_set[i][0]), 1):
+                # print(tot[j-1])
+                # print(train_set[i][0][j])
+                tot.append(tot[j - 1] + test_set[i][0][j])
+
+            for x in test_set[i][1]:
+                types.append(x)
+
+            t.append(tot)
+            t.append(test_set[i][0])
+            t.append(test_set[i][1])
+            test.append(t)
+
+        ntypes = len(set(types))
+
+
+        def features(batch):
+            total, times, events = [], [], []
+            for tot, time, event in batch:
+                times.append(time)
+                events.append(event)
+                total.append(tot)
+
+            return torch.FloatTensor(total), torch.FloatTensor(times), torch.LongTensor(events)
+
+        trainl = DataLoader(train, batch_size=batch_size, shuffle=True, collate_fn=features)
+        testl = DataLoader(test, batch_size=batch_size, shuffle=True, collate_fn=features)
+
+        #trainl = DataLoader(train[:500], batch_size=batch_size, shuffle=True, collate_fn=features)
+        #testl = DataLoader(test[500:1000], batch_size=batch_size, shuffle=True, collate_fn=features)
+
+        return trainl, testl, ntypes
 
 
 class stackOverflow:

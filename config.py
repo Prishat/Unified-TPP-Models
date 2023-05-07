@@ -24,11 +24,30 @@ njsde_params = {'niters':100,
                 'seed0':False,
                 'debug':False}
 
+thp_params = {'epoch':2,
+              'batch_size':16,
+              'd_model':64,
+              'd_rnn':256,
+              'd_inner_hid':128,
+              'd_k':16,
+              'd_v':16,
+              'n_head':4,
+              'n_layers':4,
+              'dropout':0.1,
+              'lr':1e-4,
+              'smooth':0.1,
+              'log':'log.txt',
+              'num_types': 75, ## For Mimic dataset
+              'device':'cpu'}
+
 # Dataset Parameter Dictionaries
 
-atm_params = {'seq_len': 10}
+atm_params = {'seq_len': 10,
+              'batch_size':4}
 
 thp_data_params = {"data":"./mimic/fold1/",
                    "batch_size":4}
+
+nhp_dataset_params = {'PathData':'./data/'}
 
 nhp_dataset_params = {'PathData':'./data/'}
