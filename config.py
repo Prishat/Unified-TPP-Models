@@ -40,6 +40,18 @@ thp_params = {'epoch':2,
               'num_types': 75, ## For Mimic dataset
               'device':'cpu'}
 
+nhp_params = {'DimLSTM':16,
+              'total_event_num':10,
+              'PathData':'./data',
+              'UseGPU':False,
+              'Multiplier':1,
+              'SizeBatch':50,
+              'TrackPeriod':500,
+              'MaxEpoch':10,
+              'learning_rate':1e-3,
+              'Seed':12345,
+              'PathSave':'./savedmodel'}
+
 # Dataset Parameter Dictionaries
 
 atm_params = {'seq_len': 10,
@@ -47,7 +59,5 @@ atm_params = {'seq_len': 10,
 
 thp_data_params = {"data":"./mimic/fold1/",
                    "batch_size":4}
-
-nhp_dataset_params = {'PathData':'./data/'}
 
 nhp_dataset_params = {'PathData':'./data/'}

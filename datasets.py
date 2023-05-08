@@ -196,6 +196,89 @@ class ATMDataset:
 
         return trainl, testl, ntypes
 
+    @staticmethod
+    def process_nhp(train_set, test_set):
+        for i in range(len(train_set)):
+            for j in range(len(train_set[i][0]) - 1, 0, -1):
+                # print(j)
+                train_set[i][0][j] -= train_set[i][0][j - 1]
+
+        for i in range(len(test_set)):
+            for j in range(len(test_set[i][0]) - 1, 0, -1):
+                # print(j)
+                test_set[i][0][j] -= test_set[i][0][j - 1]
+
+        train = []
+        test = []
+        types = []
+
+        for i in range(len(train_set)):
+            tot = []
+            t = []
+            tot.append(train_set[i][0][0])
+
+            for j in range(1, len(train_set[i][0]), 1):
+                # print(tot[j-1])
+                # print(train_set[i][0][j])
+                tot.append(tot[j - 1] + train_set[i][0][j])
+
+            for x in train_set[i][1]:
+                types.append(x)
+
+            t.append(tot)
+            t.append(train_set[i][0])
+            t.append(train_set[i][1])
+            train.append(t)
+
+        for i in range(len(test_set)):
+            tot = []
+            t = []
+            tot.append(test_set[i][0][0])
+
+            for j in range(1, len(test_set[i][0]), 1):
+                # print(tot[j-1])
+                # print(train_set[i][0][j])
+                tot.append(tot[j - 1] + test_set[i][0][j])
+
+            for x in test_set[i][1]:
+                types.append(x)
+
+            t.append(tot)
+            t.append(train_set[i][0])
+            t.append(train_set[i][1])
+            test.append(t)
+
+        ntypes = len(set(types))
+
+        train_d = []
+        test_d = []
+
+        for i in range(len(train)):
+            seq = []
+            for j in range(len(train[i][0])):
+                d = {}
+                d['time_since_start'] = train[i][0][j]
+                d['time_since_last_event'] = train[i][1][j]
+                d['type_event'] = train[i][2][j]
+
+                seq.append(d)
+
+            train_d.append(seq)
+
+        for i in range(len(test)):
+            seq = []
+            for j in range(len(test[i][0])):
+                d = {}
+                d['time_since_start'] = test[i][0][j]
+                d['time_since_last_event'] = test[i][1][j]
+                d['type_event'] = test[i][2][j]
+
+                seq.append(d)
+
+            test_d.append(seq)
+
+        return train_d, test_d, ntypes
+
 
 class stackOverflow:
     def __init__(self, params, path):
@@ -251,6 +334,23 @@ class thpDataloader:
         trainloader = get_dataloader(train_data, self.params['batch_size'], shuffle=True)
         testloader = get_dataloader(test_data, self.params['batch_size'], shuffle=False)
         return trainloader, testloader, num_types
+
+    def process_nhp(self):
+        def load_data(name, dict_name):
+            with open(name, 'rb') as f:
+                data = pickle.load(f, encoding='latin-1')
+                num_types = data['dim_process']
+                data = data[dict_name]
+                return data, int(num_types)
+
+        print('[Info] Loading train data...')
+        train_data, num_types = load_data(self.params['data'] + 'train.pkl', 'train')
+        print('[Info] Loading dev data...')
+        dev_data, _ = load_data(self.params['data'] + 'dev.pkl', 'dev')
+        print('[Info] Loading test data...')
+        test_data, _ = load_data(self.params['data'] + 'test.pkl', 'test')
+
+        return train_data, test_data, num_types
 
 
 class nhpDatareader:
