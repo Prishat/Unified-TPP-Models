@@ -310,6 +310,33 @@ class stackOverflow:
 
         return evnt_seqs, (0.0, ((tmax + t_dt) - (tmin - h_dt)) * scale)
 
+    @staticmethod
+    def to_features(batch):
+        times, events = [], []
+        for time, event in batch:
+            time = list(time)
+            time = np.array([time[0]] + time)
+            time = np.diff(time)
+            times.append(time)
+            events.append(event)
+
+        return torch.FloatTensor(times), torch.LongTensor(events)
+
+    @staticmethod
+    def process_rmtpp(train_set):
+        mn = len(train_set[0])
+
+        for i in train_set:
+            mn = min(mn, len(i))
+
+        for i in range(len(train_set)):
+            train_set[i] = train_set[i][:10]
+
+        ts = np.array(train_set)
+        temp = np.swapaxes(ts, 1, 2)
+
+        return temp
+
 class thpDataloader:
     def __init__(self, params):
         self.params = params
@@ -351,6 +378,31 @@ class thpDataloader:
         test_data, _ = load_data(self.params['data'] + 'test.pkl', 'test')
 
         return train_data, test_data, num_types
+
+    @staticmethod
+    def process_rmtpp(trainloader, testloader, mn_size = 4):
+        tset = []
+
+        for i in trainloader:
+            if i[0].shape[1] >= 4:
+                tset.append(list(i[1:]))
+                mn_size = min(mn_size, i[0].shape[1])
+
+        for i in range(len(tset)):
+            tset[i][0] = tset[i][0][:, :mn_size]
+            tset[i][1] = tset[i][1][:, :mn_size]
+
+        vset = []
+
+        for i in testloader:
+            if i[0].shape[1] >= 4:
+                vset.append(list(i[1:]))
+
+        for i in range(len(vset)):
+            vset[i][0] = vset[i][0][:, :mn_size]
+            vset[i][1] = vset[i][1][:, :mn_size]
+
+        return tset, vset
 
 
 class nhpDatareader:
