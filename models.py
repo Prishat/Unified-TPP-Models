@@ -373,8 +373,18 @@ class transHP:
               'elapse: {elapse:3.3f} min'
               .format(ll=valid_event, type=valid_type, rmse=valid_time, elapse=(time.time() - start) / 60))
 
-    def predict(self):
-        pass
+    def predict(self, valloader, num_types):
+        start = time.time()
+        if self.params['smooth'] > 0:
+            pred_loss_func = LabelSmoothingLoss(self.params['smooth'], num_types, ignore_index=-1)
+        else:
+            pred_loss_func = nn.CrossEntropyLoss(ignore_index=-1, reduction='none')
+
+        valid_event, valid_type, valid_time = self.eval_epoch(valloader, pred_loss_func)
+        print('  - (Testing)     loglikelihood: {ll: 8.5f}, '
+              'accuracy: {type: 8.5f}, RMSE: {rmse: 8.5f}, '
+              'elapse: {elapse:3.3f} min'
+              .format(ll=valid_event, type=valid_type, rmse=valid_time, elapse=(time.time() - start) / 60))
 
 class neuralHP:
     def __init__(self, params):
@@ -387,13 +397,13 @@ class neuralHP:
 
         hidden_dim = self.params['DimLSTM']
 
-        agent = nhp.NeuralHawkes(
+        self.agent = nhp.NeuralHawkes(
             total_num=self.params['total_event_num'], hidden_dim=hidden_dim,
             device='cuda' if self.params['UseGPU'] else 'cpu'
         )
 
         if self.params['UseGPU']:
-            agent.cuda()
+            self.agent.cuda()
 
         sampling = self.params['Multiplier']
 
@@ -402,7 +412,7 @@ class neuralHP:
             config_file=os.path.join(self.params['PathData'], 'censor.conf')
         )
 
-        proc = processors.DataProcessorNeuralHawkes(
+        self.proc = processors.DataProcessorNeuralHawkes(
             idx_BOS=self.params['total_event_num'],
             idx_EOS=self.params['total_event_num'] + 1,
             idx_PAD=self.params['total_event_num'] + 2,
@@ -416,7 +426,7 @@ class neuralHP:
         we only update parameters that are only related to left2right machine
         """
         optimizer = optim.Adam(
-            agent.parameters(), lr=self.params['learning_rate']
+            self.agent.parameters(), lr=self.params['learning_rate']
         )
 
         print("Start training ... ")
@@ -443,23 +453,23 @@ class neuralHP:
             one_seq = train_data[idx_seq]
 
             # time_sample_0 = time.time()
-            input.append(proc.processSeq(one_seq, n=1))
+            input.append(self.proc.processSeq(one_seq, n=1))
             #print(len(input))
             #print(input)
             # time_sample += (time.time() - time_sample_0)
 
             if len(input) >= self.params['SizeBatch']:
 
-                batchdata_seqs = proc.processBatchSeqsWithParticles(input)
+                batchdata_seqs = self.proc.processBatchSeqsWithParticles(input)
                 #print('len(batchdata_seqs) := ',len(batchdata_seqs))
                 #print('batchdata_seqs[0] := ', batchdata_seqs[0])
                 #print('batchdata_seqs[5] := ', batchdata_seqs[5][:-2])
                 #batchdata_seqs[5] = batchdata_seqs[5][:-2]
 
-                agent.train()
+                self.agent.train()
                 time_train_only_0 = time.time()
 
-                objective, _ = agent(batchdata_seqs, mode=1)
+                objective, _ = self.agent(batchdata_seqs, mode=1)
                 objective.backward()
 
                 optimizer.step()
@@ -480,20 +490,20 @@ class neuralHP:
                     total_num_token = 0.0
 
                     input_dev = []
-                    agent.eval()
+                    self.agent.eval()
 
                     for i_dev, one_seq_dev in enumerate(val_data):
 
                         input_dev.append(
-                            proc.processSeq(one_seq_dev, n=1))
+                            self.proc.processSeq(one_seq_dev, n=1))
 
                         if (i_dev + 1) % self.params['SizeBatch'] == 0 or \
                                 (i_dev == len(val_data) - 1 and (len(input_dev) % self.params['SizeBatch']) > 0):
-                            batchdata_seqs_dev = proc.processBatchSeqsWithParticles(
+                            batchdata_seqs_dev = self.proc.processBatchSeqsWithParticles(
                                 input_dev)
 
                             time_dev_only_0 = time.time()
-                            objective_dev, num_events_dev = agent(
+                            objective_dev, num_events_dev = self.agent(
                                 batchdata_seqs_dev, mode=1)
                             time_dev_only = time.time() - time_dev_only_0
 
@@ -524,7 +534,7 @@ class neuralHP:
                     if updated:
                         message += ", best updated at this episode"
                         torch.save(
-                            agent.state_dict(), self.params['PathSave'])
+                            self.agent.state_dict(), self.params['PathSave'])
                     #logger.checkpoint(message)
 
                     print(message)
@@ -545,8 +555,45 @@ class neuralHP:
         #logger.checkpoint(message)
         print(message)
 
-    def evaluate(self):
-        pass
+    def evaluate(self, val_data):
+        time1 = time.time()
+        # time_train = time1 - time0
+        # time0 = time1
+
+        # print("Validating at episode {} ({}-th seq of {}-th epoch)".format(episode, idx_seq, idx_epoch))
+        total_logP = 0.0
+        total_num_token = 0.0
+
+        input_dev = []
+        self.agent.eval()
+
+        for i_dev, one_seq_dev in enumerate(val_data):
+
+            input_dev.append(
+                self.proc.processSeq(one_seq_dev, n=1))
+
+            if (i_dev + 1) % self.params['SizeBatch'] == 0 or \
+                    (i_dev == len(val_data) - 1 and (len(input_dev) % self.params['SizeBatch']) > 0):
+                batchdata_seqs_dev = self.proc.processBatchSeqsWithParticles(
+                    input_dev)
+
+                time_dev_only_0 = time.time()
+                objective_dev, num_events_dev = self.agent(
+                    batchdata_seqs_dev, mode=1)
+                time_dev_only = time.time() - time_dev_only_0
+
+                total_logP -= float(objective_dev.data.sum())
+
+                total_num_token += float(
+                    num_events_dev.data.sum() / (1 * 1.0))
+
+                input_dev = []
+
+        total_logP /= total_num_token
+
+        message = "(Testing) loglik is {:.4f}".format(total_logP)
+        # logger.checkpoint(message)
+        print(message)
 
     def predict(self):
         pass
