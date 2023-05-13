@@ -40,6 +40,11 @@ from module.config import njsde_params
 model = njsde(njsde_params)
 model.train(train, tspan)
 ```
+
+- To get the testset results
+```python
+model.predict(test, dt=1.0/30.0)
+```
  
 To see how to use other models with different datasets, look at the notebooks in the __examples__ folder.
 
