@@ -61,3 +61,5 @@ thp_data_params = {"data":"./mimic/fold1/",
                    "batch_size":4}
 
 nhp_dataset_params = {'PathData':'./data/'}
+
+sahp_dataset_params = {'PathData':'./data/'}

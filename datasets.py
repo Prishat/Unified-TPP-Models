@@ -452,3 +452,20 @@ class nhpDatareader:
         tspan = (0.0, (tmax-tmin)*1.0)
 
         return train, tspan
+
+
+class sahpDatareader:
+    def __init__(self, params):
+        self.params = params
+
+    def read_data(self):
+        with open(os.path.join(self.params['PathData'], 'train.pkl'), 'rb') as f:
+            pkl_train = pickle.load(f)
+
+        with open(os.path.join(self.params['PathData'], 'dev.pkl'), 'rb') as f:
+            pkl_dev = pickle.load(f)
+
+        with open(os.path.join(self.params['PathData'], 'test.pkl'), 'rb') as f:
+            pkl_test = pickle.load(f)
+
+        return pkl_train, pkl_dev, pkl_test

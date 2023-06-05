@@ -17,6 +17,11 @@ from .nhps.models import nhp
 from .nhps.io import processors
 from .nhps.miss import miss_mec, factorized
 
+from .sahp.sahp_utils.load_synth_data import process_loaded_sequences
+from torch import autograd
+from .utils import make_model, train_eval_sahp
+import datetime
+
 class rmtpp:
     def __init__(self, params):
         # super(rmtpp, self).__init__(params, params['lossweight'])
@@ -594,6 +599,97 @@ class neuralHP:
         message = "(Testing) loglik is {:.4f}".format(total_logP)
         # logger.checkpoint(message)
         print(message)
+
+    def predict(self):
+        pass
+
+class saHP:
+    def __init__(self, params):
+        self.params = params
+
+    def train(self, train_hawkes_data, dev_hawkes_data, test_hawkes_data):
+        start_time = time.time()
+        device = torch.device(self.params['device'])
+        print("Training on device {}".format(device))
+
+        process_dim = self.params['num_types']
+
+        train_seq_times, train_seq_types, train_seq_lengths, train_tmax = \
+            process_loaded_sequences(train_hawkes_data, process_dim)
+        dev_seq_times, dev_seq_types, dev_seq_lengths, dev_tmax = \
+            process_loaded_sequences(dev_hawkes_data, process_dim)
+        test_seq_times, test_seq_types, test_seq_lengths, test_tmax = \
+            process_loaded_sequences(test_hawkes_data, process_dim)
+
+        tmax = max([train_tmax, dev_tmax, test_tmax])
+
+        train_sample_size = train_seq_times.size(0)
+        print("Train sample size: {}".format(train_sample_size))
+
+        dev_sample_size = dev_seq_times.size(0)
+        print("Dev sample size: {}".format(dev_sample_size))
+
+        test_sample_size = test_seq_times.size(0)
+        print("Test sample size: {}".format(test_sample_size))
+
+        # Define training data
+        train_times_tensor = train_seq_times.to(device)
+        train_seq_types = train_seq_types.to(device)
+        train_seq_lengths = train_seq_lengths.to(device)
+        print("No. of event tokens in training subset:", train_seq_lengths.sum())
+
+        # Define development data
+        dev_times_tensor = dev_seq_times.to(device)
+        dev_seq_types = dev_seq_types.to(device)
+        dev_seq_lengths = dev_seq_lengths.to(device)
+        print("No. of event tokens in development subset:", dev_seq_lengths.sum())
+
+        # Define test data
+        test_times_tensor = test_seq_times.to(device)
+        test_seq_types = test_seq_types.to(device)
+        test_seq_lengths = test_seq_lengths.to(device)
+        print("No. of event tokens in test subset:", test_seq_lengths.sum())
+
+        MODEL_TOKEN = self.params['model']
+        print("Chose models {}".format(MODEL_TOKEN))
+        hidden_size = self.params['hidden_size']
+        print("Hidden size: {}".format(hidden_size))
+        learning_rate = self.params['lr']
+        # Training parameters
+        BATCH_SIZE = self.params['batch_size']
+        EPOCHS = self.params['epochs']
+
+        model = None
+        with autograd.detect_anomaly():
+            params = self.params, process_dim, device, tmax, \
+                     train_times_tensor, train_seq_types, train_seq_lengths, \
+                     dev_times_tensor, dev_seq_types, dev_seq_lengths, \
+                     test_times_tensor, test_seq_types, test_seq_lengths, \
+                     BATCH_SIZE, EPOCHS
+            model = train_eval_sahp(params)
+
+        if self.params['save_model']:
+            # Model file dump
+            SAVED_MODELS_PATH = os.path.abspath('saved_models')
+            os.makedirs(SAVED_MODELS_PATH, exist_ok=True)
+            # print("Saved models directory: {}".format(SAVED_MODELS_PATH))
+
+            date_format = "%Y%m%d-%H%M%S"
+            now_timestamp = datetime.datetime.now().strftime(date_format)
+            extra_tag = "{}".format(self.params['task'])
+            filename_base = "{}-{}_hidden{}-{}".format(
+                MODEL_TOKEN, extra_tag,
+                hidden_size, now_timestamp)
+
+            chosen_file = './'
+            from .sahp.sahp_utils.save_model import save_model
+            save_model(model, chosen_file, extra_tag,
+                       hidden_size, now_timestamp, MODEL_TOKEN)
+
+        print('Done! time elapsed %.2f sec for %d epoches' % (time.time() - start_time, EPOCHS))
+
+    def evaluate(self):
+        pass
 
     def predict(self):
         pass
