@@ -9,14 +9,14 @@ import torch.nn.functional as F
 import numpy as np
 import math, copy
 
-from models.embedding.event_type import TypeEmbedding
-from models.embedding.position import PositionalEmbedding,BiasedPositionalEmbedding
-from models.embedding.event_embedding import EventEmbedding
-from models.attention.multi_head import MultiHeadedAttention
-from models.utils.sublayer import SublayerConnection
-from models.utils.feed_forward import PositionwiseFeedForward
-from models.base import SeqGenerator, predict_from_hidden
-from models.utils.gelu import GELU
+from .embedding.event_type import TypeEmbedding
+from .embedding.position import PositionalEmbedding,BiasedPositionalEmbedding
+from .embedding.event_embedding import EventEmbedding
+from .attention.multi_head import MultiHeadedAttention
+from .utils.sublayer import SublayerConnection
+from .utils.feed_forward import PositionwiseFeedForward
+from .base import SeqGenerator, predict_from_hidden
+from .utils.gelu import GELU
 
 from matplotlib import pyplot as plt
 
@@ -166,7 +166,7 @@ class SAHP(nn.Module):
         next_dt = dt_seq_valid[length - 1]
 
         seq_types_valid = seq_types[1:length + 1]  # include the first added event
-        from train_functions.train_sahp import MaskBatch
+        from .train_sahp import MaskBatch
         last_type = seq_types[length-1]
         next_type = seq_types[length]
         if next_type == self.process_dim:
@@ -206,7 +206,7 @@ class SAHP(nn.Module):
             return predict_from_hidden(self, h_t_vals, dt_vals, next_dt, next_type,
                                             plot, hmax, n_samples, print_info)
 
-
+    """
     def plot_estimated_intensity(self,timestamps, n_points=10000, plot_nodes=None,
                                  t_min=None, t_max=None,
                                  intensity_track_step=None, max_jumps=None,
@@ -232,9 +232,9 @@ class SAHP(nn.Module):
                                           ax[i], i, n_points)
         if qqplot is not None:
             return intens_at_evs_lst
-
+    """
     def intensity_per_type(self, seq_types, dt_seq, sample_times, timestamps, type):
-        from train_functions.train_sahp import MaskBatch
+        from .train_sahp import MaskBatch
 
         intens_at_samples = []
         with torch.no_grad():
